@@ -83,24 +83,26 @@ fun Home() {
             .pointerInput(Unit) { detectVerticalDragGestures { _, dy -> if (dy < -25) drawer = true } }
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
-            Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 92.sp,
-                fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 24.dp))
+            Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
+                fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
             Text(date, color = Color.White, fontSize = 15.sp)
+            Spacer(Modifier.height(12.dp))
+            Surface(color = Glass, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("--°", color = Color.White, fontSize = 28.sp, fontFamily = FontFamily.Serif)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Clima: próximamente", color = Color.White, fontSize = 13.sp)
+                }
+            }
             Spacer(Modifier.height(16.dp))
-            Surface(color = Glass, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                    Text("--°", color = Color.White, fontSize = 30.sp, fontFamily = FontFamily.Serif)
-                    Text("Clima y ubicación: se configuran en el siguiente paso", color = Color.White, fontSize = 12.sp)
-                }
-            }
-            Spacer(Modifier.height(22.dp))
             priority.chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    row.forEach { AppIcon(it, 66.dp, Color.White) }
+                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    row.forEach { AppIcon(it, 60.dp, Color.White) }
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             QuoteCard("Lo simple también es hermoso.")
+            Spacer(Modifier.height(12.dp))
             Spacer(Modifier.weight(1f))
             Surface(color = Glass, shape = RoundedCornerShape(23.dp),
                 modifier = Modifier.fillMaxWidth().height(46.dp).clickable { drawer = true }) {
@@ -108,13 +110,13 @@ fun Home() {
                     Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             Surface(color = Glass, shape = RoundedCornerShape(32.dp), modifier = Modifier.fillMaxWidth().height(76.dp)) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     dock.forEach { AppIcon(it, 52.dp, Color.White, showLabel = false) }
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
         }
         AnimatedVisibility(drawer, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             Drawer(apps) { drawer = false }
@@ -125,12 +127,12 @@ fun Home() {
 @Composable
 fun QuoteCard(text: String) {
     Box(
-        Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(26.dp))
+        Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(26.dp))
             .background(Brush.linearGradient(listOf(Color(0xFFA89578), Color(0xFF6D5A45))))
     ) {
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99281F18)))))
-        Text(text, color = Color.White, fontSize = 26.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
-            lineHeight = 30.sp, modifier = Modifier.align(Alignment.BottomStart).padding(20.dp).widthIn(max = 240.dp))
+        Text(text, color = Color.White, fontSize = 23.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
+            lineHeight = 27.sp, modifier = Modifier.align(Alignment.BottomStart).padding(18.dp).widthIn(max = 240.dp))
     }
 }
 
@@ -151,7 +153,7 @@ fun AppIcon(app: AppItem, size: Dp, textColor: Color, showLabel: Boolean = true,
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     val list = remember(apps, q) { apps.filter { it.label.contains(q, ignoreCase = true) } }
-    Column(Modifier.fillMaxSize().background(Cream.copy(alpha = 0.96f)).statusBarsPadding().padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxSize().background(Cream).statusBarsPadding().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Buscar aplicaciones") },
             shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth(),
