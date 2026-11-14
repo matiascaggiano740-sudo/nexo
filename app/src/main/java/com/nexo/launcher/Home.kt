@@ -13,9 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -295,19 +294,61 @@ fun AppIcon(app: AppItem, size: Dp, textColor: Color, showLabel: Boolean = true,
     }
 }
 
+private val SOCIAL_PACKAGES = setOf(
+    "com.whatsapp", "com.whatsapp.w4b", "com.instagram.android", "com.facebook.katana",
+    "com.facebook.orca", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.pinterest",
+    "org.telegram.messenger", "com.twitter.android", "com.instagram.barcelona", "com.snapchat.android",
+    "com.facebook.lite", "com.discord", "com.linkedin.android", "com.reddit.frontpage",
+)
+
+private fun appCategory(app: AppItem): String = when {
+    app.pkg in SOCIAL_PACKAGES -> "Redes Sociales"
+    app.category == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
+        listOf("pubg", "supercell", "garena", "activision", "roblox", "moonton", "netmarble").any { app.pkg.contains(it, true) } -> "Juegos"
+    app.pkg.startsWith("com.google.android.") || app.pkg.startsWith("com.google.") -> "Google"
+    app.category == android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY ||
+        app.pkg.startsWith("com.android.") || app.pkg.startsWith("com.miui.") -> "Herramientas"
+    else -> "Otras"
+}
+
+@Composable
+private fun DrawerCategoryTitle(title: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF24D69B)))
+        Surface(color = Color(0xFF171411), shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(horizontal = 10.dp)) {
+            Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp))
+        }
+        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF24D69B)))
+    }
+}
+
 @Composable
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
-    val list = remember(apps, q) { apps.filter { it.label.contains(q, ignoreCase = true) } }
-    Column(Modifier.fillMaxSize().background(Cream).statusBarsPadding().padding(horizontal = 20.dp)) {
+    val categories = remember(apps, q) {
+        val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
+        listOf("Redes Sociales", "Juegos", "Google", "Herramientas", "Otras").mapNotNull { name ->
+            val members = filtered.filter { appCategory(it) == name }
+            if (members.isEmpty()) null else name to members
+        }
+    }
+    Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Buscar aplicaciones") },
             shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions.Default)
-        Spacer(Modifier.height(12.dp))
-        LazyVerticalGrid(GridCells.Fixed(4), verticalArrangement = Arrangement.spacedBy(18.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly, contentPadding = PaddingValues(bottom = 32.dp)) {
-            items(list, key = { it.pkg }) { AppIcon(it, 56.dp, Brown, onLaunch = close) }
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+            categories.forEach { (title, members) ->
+                item(key = "category-$title") { DrawerCategoryTitle(title) }
+                items(members.chunked(4), key = { row -> row.joinToString { it.pkg } }) { row ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        row.forEach { AppIcon(it, 56.dp, Color.White, onLaunch = close) }
+                        repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) }
+                    }
+                }
+            }
         }
     }
 }

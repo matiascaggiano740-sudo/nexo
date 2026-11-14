@@ -3,12 +3,13 @@ package com.nexo.launcher
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
 import android.provider.MediaStore
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 
-data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap, val intent: Intent)
+data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap, val intent: Intent, val category: Int = ApplicationInfo.CATEGORY_UNDEFINED)
 
 fun loadApps(ctx: Context): List<AppItem> {
     val pm = ctx.packageManager
@@ -18,7 +19,7 @@ fun loadApps(ctx: Context): List<AppItem> {
         .mapNotNull { ri ->
             val pkg = ri.activityInfo.packageName
             val launch = pm.getLaunchIntentForPackage(pkg) ?: return@mapNotNull null
-            AppItem(ri.loadLabel(pm).toString(), pkg, ri.loadIcon(pm).toBitmap(128, 128).asImageBitmap(), launch)
+            AppItem(ri.loadLabel(pm).toString(), pkg, ri.loadIcon(pm).toBitmap(128, 128).asImageBitmap(), launch, ri.activityInfo.applicationInfo.category)
         }
         .distinctBy { it.pkg }
         .sortedBy { it.label.lowercase() }
