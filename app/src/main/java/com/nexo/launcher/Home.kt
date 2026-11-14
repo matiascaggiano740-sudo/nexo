@@ -1,19 +1,25 @@
 package com.nexo.launcher
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -42,7 +50,6 @@ private val Cream = Color(0xFFF3EEE4)
 private val Brown = Color(0xFF3A342C)
 private val Glass = Color.White.copy(alpha = 0.20f)
 
-// Apps frecuentes con prioridad visual (se usa la primera instalada de cada grupo).
 private val PRIORITY = listOf(
     listOf("com.whatsapp", "com.whatsapp.w4b"),
     listOf("com.spotify.music"),
@@ -52,30 +59,82 @@ private val PRIORITY = listOf(
     listOf("com.android.chrome"),
 )
 
+private val MESSAGES = listOf("com.google.android.apps.messaging", "com.android.mms", "com.samsung.android.messaging")
+
+private val FOLDERS = listOf(
+    "Social" to listOf(
+        "com.instagram.android", "com.facebook.katana", "com.facebook.orca", "com.zhiliaoapp.musically",
+        "com.ss.android.ugc.trill", "com.pinterest", "org.telegram.messenger", "com.twitter.android",
+        "com.instagram.barcelona", "com.snapchat.android", "com.facebook.lite",
+    ),
+    "Google" to listOf(
+        "com.google.android.apps.maps", "com.google.android.gm", "com.google.android.youtube",
+        "com.google.android.apps.docs", "com.google.android.googlequicksearchbox",
+        "com.google.android.apps.photos", "com.google.android.apps.translate",
+    ),
+    "Herramientas" to listOf(
+        "com.miui.calculator", "com.google.android.calculator", "com.android.deskclock",
+        "com.google.android.deskclock", "com.android.calendar", "com.google.android.calendar",
+        "com.miui.securitycenter", "com.miui.notes",
+    ),
+)
+
 @Composable
 fun Home() {
     val ctx = LocalContext.current
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
     var drawer by remember { mutableStateOf(false) }
+    var openFolder by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
+    var city by remember { mutableStateOf(savedCity(ctx)) }
+    var weather by remember { mutableStateOf<WeatherInfo?>(null) }
+    var editCity by remember { mutableStateOf(false) }
+    var quote by remember { mutableStateOf(savedQuote(ctx)) }
+    var photo by remember { mutableStateOf<ImageBitmap?>(null) }
+    var photoTick by remember { mutableStateOf(0) }
+    var editCard by remember { mutableStateOf(false) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            savePhoto(ctx, uri.toString())
+            photoTick++
+        }
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
-            apps = loadApps(ctx)
-            val chrome = apps.find { it.pkg == "com.android.chrome" }
+            val list = loadApps(ctx)
             val sys = loadSystemDock(ctx)
-            dock = buildList { sys.getOrNull(0)?.let(::add); sys.getOrNull(1)?.let(::add); chrome?.let(::add); sys.getOrNull(2)?.let(::add) }
+            val msgs = list.firstOrNull { it.pkg in MESSAGES } ?: sys.getOrNull(1)
+            val chrome = list.find { it.pkg == "com.android.chrome" }
+            dock = listOfNotNull(sys.getOrNull(0), msgs, chrome, sys.getOrNull(2))
+            apps = list
         }
     }
     LaunchedEffect(Unit) {
         while (true) { now = LocalDateTime.now(); delay(60_000L - System.currentTimeMillis() % 60_000L) }
     }
+    LaunchedEffect(city) {
+        while (city.isNotBlank()) {
+            weather = withContext(Dispatchers.IO) { loadWeather(city) } ?: weather
+            delay(30 * 60_000L)
+        }
+    }
+    LaunchedEffect(photoTick) { photo = withContext(Dispatchers.IO) { loadCardPhoto(ctx) } }
+
     BackHandler(drawer) { drawer = false }
+    BackHandler(openFolder != null) { openFolder = null }
 
     val priority = PRIORITY.mapNotNull { g -> g.firstNotNullOfOrNull { p -> apps.find { it.pkg == p } } }
+    val folders = FOLDERS.mapNotNull { (name, pkgs) ->
+        val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
+        if (found.isEmpty()) null else name to found
+    }
     val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
         .replaceFirstChar { it.uppercase() }
+    val w = weather
 
     Box(
         Modifier.fillMaxSize()
@@ -87,11 +146,15 @@ fun Home() {
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
             Text(date, color = Color.White, fontSize = 15.sp)
             Spacer(Modifier.height(12.dp))
-            Surface(color = Glass, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+            Surface(color = Glass, shape = RoundedCornerShape(22.dp),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable { editCity = true }) {
                 Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("--°", color = Color.White, fontSize = 28.sp, fontFamily = FontFamily.Serif)
+                    Text(if (w != null) "${w.temp}°" else "--°", color = Color.White, fontSize = 28.sp, fontFamily = FontFamily.Serif)
                     Spacer(Modifier.width(12.dp))
-                    Text("Clima: próximamente", color = Color.White, fontSize = 13.sp)
+                    Text(
+                        if (w != null) "${w.label} · ${w.city}" else if (city.isBlank()) "Toca para elegir tu ciudad" else "Cargando clima...",
+                        color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -100,8 +163,13 @@ fun Home() {
                     row.forEach { AppIcon(it, 60.dp, Color.White) }
                 }
             }
+            if (folders.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    folders.forEach { (name, list) -> FolderIcon(name, list, 60.dp) { openFolder = name } }
+                }
+            }
             Spacer(Modifier.height(4.dp))
-            QuoteCard("Lo simple también es hermoso.")
+            QuoteCard(quote, photo) { editCard = true }
             Spacer(Modifier.height(12.dp))
             Spacer(Modifier.weight(1f))
             Surface(color = Glass, shape = RoundedCornerShape(23.dp),
@@ -121,18 +189,96 @@ fun Home() {
         AnimatedVisibility(drawer, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             Drawer(apps) { drawer = false }
         }
+        openFolder?.let { name ->
+            folders.find { it.first == name }?.let { FolderPanel(name, it.second) { openFolder = null } }
+        }
+    }
+
+    if (editCity) {
+        var t by remember { mutableStateOf(city) }
+        AlertDialog(
+            onDismissRequest = { editCity = false },
+            title = { Text("Tu ciudad") },
+            text = { OutlinedTextField(t, { t = it }, singleLine = true, placeholder = { Text("Ej: Buenos Aires") }) },
+            confirmButton = { TextButton({ saveCity(ctx, t.trim()); city = t.trim(); weather = null; editCity = false }) { Text("Guardar") } },
+            dismissButton = { TextButton({ editCity = false }) { Text("Cancelar") } },
+        )
+    }
+    if (editCard) {
+        var t by remember { mutableStateOf(quote) }
+        AlertDialog(
+            onDismissRequest = { editCard = false },
+            title = { Text("Tu tarjeta") },
+            text = {
+                Column {
+                    OutlinedTextField(t, { t = it.take(80) }, label = { Text("Frase") }, modifier = Modifier.fillMaxWidth())
+                    TextButton({ picker.launch(arrayOf("image/*")) }) { Text("Elegir foto de la galería") }
+                }
+            },
+            confirmButton = {
+                TextButton({
+                    val v = t.trim().ifBlank { DEFAULT_QUOTE }
+                    saveQuote(ctx, v); quote = v; editCard = false
+                }) { Text("Guardar") }
+            },
+            dismissButton = { TextButton({ editCard = false }) { Text("Cancelar") } },
+        )
     }
 }
 
 @Composable
-fun QuoteCard(text: String) {
+fun QuoteCard(text: String, photo: ImageBitmap?, onClick: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(26.dp))
+        Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(26.dp))
             .background(Brush.linearGradient(listOf(Color(0xFFA89578), Color(0xFF6D5A45))))
+            .clickable { onClick() }
     ) {
+        if (photo != null) Image(photo, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99281F18)))))
-        Text(text, color = Color.White, fontSize = 23.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
-            lineHeight = 27.sp, modifier = Modifier.align(Alignment.BottomStart).padding(18.dp).widthIn(max = 240.dp))
+        Text(text, color = Color.White, fontSize = 21.sp, fontFamily = FontFamily.Serif, fontStyle = FontStyle.Italic,
+            lineHeight = 25.sp, maxLines = 3, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).widthIn(max = 260.dp))
+    }
+}
+
+@Composable
+fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit) {
+    Column(Modifier.width(size + 12.dp).clickable { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(7.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                apps.take(4).chunked(2).forEach { r ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        r.forEach { Image(it.icon, null, Modifier.size(20.dp).clip(RoundedCornerShape(6.dp))) }
+                    }
+                }
+            }
+        }
+        Text(name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+@Composable
+fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0x99201810)).pointerInput(Unit) { detectTapGestures { close() } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.padding(horizontal = 28.dp).clip(RoundedCornerShape(32.dp)).background(Cream.copy(alpha = 0.95f))
+                .pointerInput(Unit) { detectTapGestures { } }.padding(22.dp)
+        ) {
+            Text(name, color = Brown, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(18.dp))
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                apps.chunked(3).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        row.forEach { AppIcon(it, 56.dp, Brown, onLaunch = close) }
+                        repeat(3 - row.size) { Spacer(Modifier.width(68.dp)) }
+                    }
+                }
+            }
+        }
     }
 }
 
