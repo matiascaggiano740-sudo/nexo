@@ -96,6 +96,7 @@ fun Home() {
                 ?: emptyList()
         )
         }
+        var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
     var packageRefresh by remember { mutableStateOf(0) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
