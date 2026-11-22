@@ -456,3 +456,54 @@ fun Drawer(apps: List<AppItem>, close: () -> Unit) {
         }
     }
 }
+private fun loadPlayStoreCategory(pkg: String): String? {
+    val connection = java.net.URL(
+        "https://play.google.com/store/apps/details?id=$pkg&hl=es_AR&gl=AR"
+    ).openConnection() as java.net.HttpURLConnection
+
+    connection.connectTimeout = 5000
+    connection.readTimeout = 5000
+    connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+
+    return try {
+        val html = connection.inputStream.bufferedReader().use { it.readText() }
+        val genreStart = html.indexOf("itemprop=\"genre\"")
+
+        if (genreStart < 0) {
+            null
+        } else {
+            val section = html.substring(
+                genreStart,
+                (genreStart + 4000).coerceAtMost(html.length)
+            )
+            val marker = "/store/apps/category/"
+            val markerStart = section.indexOf(marker)
+
+            if (markerStart < 0) {
+                null
+            } else {
+                val code = section
+                    .substring(markerStart + marker.length)
+                    .takeWhile { it.isUpperCase() || it == '_' }
+
+                when (code) {
+                    "SOCIAL" -> "Redes Sociales"
+                    "MUSIC_AND_AUDIO", "VIDEO_PLAYERS", "PHOTOGRAPHY" -> "Multimedia"
+                    "GAME" -> "Juegos"
+                    "MAPS_AND_NAVIGATION" -> "Mapas y viajes"
+                    "FINANCE" -> "Finanzas"
+                    "SHOPPING" -> "Compras"
+                    "PRODUCTIVITY" -> "Productividad"
+                    "COMMUNICATION" -> "Comunicación"
+                    "NEWS_AND_MAGAZINES", "BOOKS_AND_REFERENCE" -> "Noticias y lectura"
+                    "TOOLS" -> "Herramientas"
+                    else -> null
+                }
+            }
+        }
+    } catch (_: Exception) {
+        null
+    } finally {
+        connection.disconnect()
+    }
+}
