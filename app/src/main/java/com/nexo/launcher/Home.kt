@@ -498,11 +498,39 @@ LaunchedEffect(apps) {
         }
     }
     Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Buscar aplicaciones") },
-            shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions.Default)
-        Spacer(Modifier.height(8.dp))
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Spacer(Modifier.height(16.dp))
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            q,
+            { q = it },
+            singleLine = true,
+            placeholder = { Text("Buscar aplicaciones") },
+            shape = RoundedCornerShape(26.dp),
+            modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions.Default
+        )
+
+        Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Text("⋮", color = Color.White, fontSize = 26.sp)
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Organizar aplicaciones") },
+                    onClick = { menuExpanded = false }
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
         LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
             categories.forEach { (title, members) ->
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
