@@ -431,7 +431,15 @@ private fun DrawerCategoryTitle(title: String) {
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var playCategories by remember { mutableStateOf(emptyMap<String, String>()) }
-
+val ctx = LocalContext.current
+var manualCategories by remember {
+    mutableStateOf(
+        ctx.getSharedPreferences("nexo_app_categories", 0)
+            .all
+            .mapNotNull { (key, value) -> (value as? String)?.let { key to it } }
+            .toMap()
+    )
+}
 LaunchedEffect(apps) {
     for (app in apps) {
         val category = withContext(Dispatchers.IO) {
