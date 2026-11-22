@@ -676,6 +676,7 @@ private fun loadPlayStoreCategory(pkg: String): String? {
                     "GAME" -> "Juegos"
                     "MAPS_AND_NAVIGATION" -> "Mapas y viajes"
                     "FINANCE" -> "Finanzas"
+                    "FOOD_AND_DRINK" -> "Comida"
                     "SHOPPING" -> "Compras"
                     "PRODUCTIVITY" -> "Productividad"
                     "COMMUNICATION" -> "Comunicación"
