@@ -52,7 +52,7 @@ private val Glass = Color.White.copy(alpha = 0.20f)
 private val PRIORITY = listOf(
     listOf("com.whatsapp", "com.whatsapp.w4b"),
     listOf("com.spotify.music"),
-    listOf("com.instagram.android"),
+    listOf("com.instagram.androi
     listOf("com.google.android.apps.maps"),
     listOf("com.miui.gallery", "com.google.android.apps.photos"),
     listOf("com.android.chrome"),
@@ -295,20 +295,118 @@ fun AppIcon(app: AppItem, size: Dp, textColor: Color, showLabel: Boolean = true,
 }
 
 private val SOCIAL_PACKAGES = setOf(
-    "com.whatsapp", "com.whatsapp.w4b", "com.instagram.android", "com.facebook.katana",
-    "com.facebook.orca", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.pinterest",
-    "org.telegram.messenger", "com.twitter.android", "com.instagram.barcelona", "com.snapchat.android",
-    "com.facebook.lite", "com.discord", "com.linkedin.android", "com.reddit.frontpage",
+    "com.whatsapp",
+    "com.whatsapp.w4b",
+    "com.instagram.android",
+    "com.facebook.katana",
+    "com.facebook.orca",
+    "com.zhiliaoapp.musically",
+    "com.ss.android.ugc.trill",
+    "com.pinterest",
+    "org.telegram.messenger",
+    "com.twitter.android",
+    "com.instagram.barcelona",
+    "com.facebook.lite",
+    "com.discord",
+    "com.linkedin.android",
+    "com.reddit.frontpage",
 )
 
-private fun appCategory(app: AppItem): String = when {
-    app.pkg in SOCIAL_PACKAGES -> "Redes Sociales"
-    app.category == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
-        listOf("pubg", "supercell", "garena", "activision", "roblox", "moonton", "netmarble").any { app.pkg.contains(it, true) } -> "Juegos"
-    app.pkg.startsWith("com.google.android.") || app.pkg.startsWith("com.google.") -> "Google"
-    app.category == android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY ||
-        app.pkg.startsWith("com.android.") || app.pkg.startsWith("com.miui.") -> "Herramientas"
-    else -> "Otras"
+private fun AppItem.matchesAny(vararg terms: String): Boolean {
+    val text = "\(label \)pkg".lowercase(Locale.ROOT)
+    return terms.any { term -> text.contains(term) }
+}
+
+private fun appCategory(app: AppItem): String {
+    val info = app.category
+
+    return when {
+        app.pkg in SOCIAL_PACKAGES ||
+            info == android.content.pm.ApplicationInfo.CATEGORY_SOCIAL ->
+            "Redes Sociales"
+
+        app.pkg == "com.spotify.music" ||
+            app.pkg == "com.snapchat.android" ||
+            info == android.content.pm.ApplicationInfo.CATEGORY_AUDIO ||
+            info == android.content.pm.ApplicationInfo.CATEGORY_VIDEO ||
+            info == android.content.pm.ApplicationInfo.CATEGORY_IMAGE ||
+            app.matchesAny(
+                "spotify", "snapchat", "music", "música", "podcast",
+                "radio", "netflix", "youtube", "video", "vídeo",
+                "camera", "cámara", "gallery", "galería", "photos",
+                "fotos", "editor", "capcut"
+            ) ->
+            "Multimedia"
+
+        info == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
+            app.matchesAny(
+                "game", "juego", "pubg", "supercell", "garena",
+                "activision", "roblox", "moonton", "netmarble",
+                "clash", "minecraft"
+            ) ->
+            "Juegos"
+
+        app.pkg == "com.android.chrome" ||
+            app.pkg.startsWith("com.google.android.") ||
+            app.pkg.startsWith("com.google.") ||
+            app.matchesAny("google chrome", "gmail", "google drive") ->
+            "Google"
+
+        info == android.content.pm.ApplicationInfo.CATEGORY_MAPS ||
+            app.matchesAny(
+                "maps", "mapas", "navigation", "navegación",
+                "uber", "cabify", "booking", "airbnb", "despegar"
+            ) ->
+            "Mapas y viajes"
+
+        app.matchesAny(
+            "mercadopago", "mercado pago", "banco", "bank",
+            "wallet", "billetera", "paypal", "prex", "uala",
+            "brubank", "finanzas"
+        ) ->
+            "Finanzas"
+
+        app.matchesAny(
+            "shopping", "shop", "compras", "store", "tienda",
+            "mercadolibre", "mercado libre", "amazon",
+            "aliexpress", "temu", "shein", "pedidosya", "rappi"
+        ) ->
+            "Compras"
+
+        info == android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY ||
+            app.matchesAny(
+                "calendar", "calendario", "docs", "document",
+                "office", "notas", "notes", "task", "tarea",
+                "todo", "drive", "mail", "email"
+            ) ->
+            "Productividad"
+
+        app.matchesAny(
+            "whatsapp", "telegram", "messenger", "messages",
+            "mensajes", "phone", "teléfono", "dialer",
+            "llamadas", "contactos", "contacts"
+        ) ->
+            "Comunicación"
+
+        info == android.content.pm.ApplicationInfo.CATEGORY_NEWS ||
+            app.matchesAny(
+                "news", "noticias", "diario", "reader",
+                "lectura", "kindle", "book", "libro"
+            ) ->
+            "Noticias y lectura"
+
+        app.pkg.startsWith("com.android.") ||
+            app.pkg.startsWith("com.miui.") ||
+            app.matchesAny(
+                "settings", "ajustes", "calculator", "calculadora",
+                "clock", "reloj", "security", "seguridad",
+                "file manager", "archivos", "tools", "herramientas"
+            ) ->
+            "Herramientas"
+
+        else ->
+            "Otras"
+    }
 }
 
 @Composable
