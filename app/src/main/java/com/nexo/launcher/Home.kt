@@ -548,7 +548,76 @@ LaunchedEffect(apps) {
         }
     }
 }
-private fun loadPlayStoreCategory(pkg: String): String? {
+@Composable
+private fun OrganizeAppsDialog(
+    apps: List<AppItem>,
+    playCategories: Map<String, String>,
+    manualCategories: Map<String, String>,
+    onCategoryChange: (String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val categoryNames = listOf(
+        "Redes Sociales", "Multimedia", "Juegos", "Google",
+        "Mapas y viajes", "Finanzas", "Compras", "Productividad",
+        "Comunicación", "Noticias y lectura", "Herramientas", "Otras"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Organizar aplicaciones") },
+        text = {
+            Column(
+                Modifier
+                    .heightIn(max = 500.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                apps.sortedBy { it.label.lowercase() }.forEach { app ->
+                    var expanded by remember(app.pkg) { mutableStateOf(false) }
+                    val currentCategory =
+                        manualCategories[app.pkg]
+                            ?: playCategories[app.pkg]
+                            ?: appCategory(app)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            app.label,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Box {
+                            TextButton(onClick = { expanded = true }) {
+                                Text(currentCategory, maxLines = 1)
+                            }
+
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+                                categoryNames.forEach { name ->
+                                    DropdownMenuItem(
+                                        text = { Text(name) },
+                                        onClick = {
+                                            onCategoryChange(app.pkg, name)
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Listo")
+            }
+        }
+    )
+}
+
     val connection = java.net.URL(
         "https://play.google.com/store/apps/details?id=$pkg&hl=es_AR&gl=AR"
     ).openConnection() as java.net.HttpURLConnection
