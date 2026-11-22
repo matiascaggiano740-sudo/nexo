@@ -546,7 +546,8 @@ LaunchedEffect(apps) {
 }
 
 
-                        repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) 
+                                                repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) }
+ 
                     }
 
                 }
