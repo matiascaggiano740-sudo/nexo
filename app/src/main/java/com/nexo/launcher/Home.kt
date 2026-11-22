@@ -430,6 +430,18 @@ private fun DrawerCategoryTitle(title: String) {
 @Composable
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
+    var playCategories by remember { mutableStateOf(emptyMap<String, String>()) }
+
+LaunchedEffect(apps) {
+    for (app in apps) {
+        val category = withContext(Dispatchers.IO) {
+            loadPlayStoreCategory(app.pkg)
+        }
+        if (category != null) {
+            playCategories = playCategories + (app.pkg to category)
+        }
+    }
+}
     val categories = remember(apps, q) {
         val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
         listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
