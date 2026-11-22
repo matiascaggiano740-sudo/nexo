@@ -494,7 +494,7 @@ LaunchedEffect(apps) {
 }
       val categories = remember(apps, q, playCategories, manualCategories) {
         val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
-        listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
+         listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Comida", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
               val members = filtered.filter { app ->
     (
         manualCategories[app.pkg]
