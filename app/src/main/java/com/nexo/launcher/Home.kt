@@ -617,7 +617,7 @@ private fun OrganizeAppsDialog(
         }
     )
 }
-
+private fun loadPlayStoreCategory(pkg: String): String? {
     val connection = java.net.URL(
         "https://play.google.com/store/apps/details?id=$pkg&hl=es_AR&gl=AR"
     ).openConnection() as java.net.HttpURLConnection
