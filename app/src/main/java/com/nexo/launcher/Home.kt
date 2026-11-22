@@ -490,11 +490,17 @@ var manualCategories by remember {
     )
 }
 LaunchedEffect(apps) {
+    val cache = ctx.getSharedPreferences("nexo_play_categories", 0)
+
     for (app in apps) {
+        if (playCategories.containsKey(app.pkg)) continue
+
         val category = withContext(Dispatchers.IO) {
             loadPlayStoreCategory(app.pkg)
         }
+
         if (category != null) {
+            cache.edit().putString(app.pkg, category).apply()
             playCategories = playCategories + (app.pkg to category)
         }
     }
