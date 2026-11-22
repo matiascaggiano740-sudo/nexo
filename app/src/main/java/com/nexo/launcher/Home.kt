@@ -547,7 +547,23 @@ LaunchedEffect(apps) {
 
 
                         repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) }
-                    }
+                            if (showOrganizer) {
+        OrganizeAppsDialog(
+            apps = apps,
+            playCategories = playCategories,
+            manualCategories = manualCategories,
+            onCategoryChange = { pkg, name ->
+                ctx.getSharedPreferences("nexo_app_categories", 0)
+                    .edit()
+                    .putString(pkg, name)
+                    .apply()
+
+                manualCategories = manualCategories + (pkg to name)
+            },
+            onDismiss = { showOrganizer = false }
+        )
+                            }
+                    
                 }
             }
         }
