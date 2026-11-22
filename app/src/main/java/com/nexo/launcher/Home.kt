@@ -141,7 +141,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     BackHandler(drawer) { drawer = false }
     BackHandler(openFolder != null) { openFolder = null }
 
-    val priority = PRIORITY.mapNotNull { g -> g.firstNotNullOfOrNull { p -> apps.find { it.pkg == p } } }
+        val priority = if (homePackages.isEmpty()) {
+        PRIORITY.mapNotNull { group ->
+            group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
+        }
+    } else {
+        homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+    }
+
     val folders = FOLDERS.mapNotNull { (name, pkgs) ->
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
         if (found.isEmpty()) null else name to found
