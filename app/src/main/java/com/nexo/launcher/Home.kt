@@ -282,6 +282,96 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         )
     }
 }
+@Composable
+private fun HomeAppsDialog(
+    apps: List<AppItem>,
+    selectedPackages: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit
+) {
+    val selected = remember(selectedPackages) {
+        androidx.compose.runtime.mutableStateListOf<String>().apply {
+            addAll(selectedPackages)
+        }
+    }
+
+    val displayedApps =
+        selected.mapNotNull { pkg -> apps.find { it.pkg == pkg } } +
+            apps.filter { app -> app.pkg !in selected }
+                .sortedBy { it.label.lowercase() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Accesos del inicio") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())
+            ) {
+                Text("Elegí las apps y ordená las seleccionadas con las flechas.")
+                Spacer(Modifier.height(10.dp))
+
+                displayedApps.forEach { app ->
+                    val position = selected.indexOf(app.pkg)
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = position >= 0,
+                            onCheckedChange = { checked ->
+                                if (checked && app.pkg !in selected) {
+                                    selected.add(app.pkg)
+                                } else if (!checked) {
+                                    selected.remove(app.pkg)
+                                }
+                            }
+                        )
+
+                        Text(
+                            app.label,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        if (position >= 0) {
+                            TextButton(
+                                enabled = position > 0,
+                                onClick = {
+                                    val item = selected.removeAt(position)
+                                    selected.add(position - 1, item)
+                                }
+                            ) {
+                                Text("↑")
+                            }
+
+                            TextButton(
+                                enabled = position < selected.lastIndex,
+                                onClick = {
+                                    val item = selected.removeAt(position)
+                                    selected.add(position + 1, item)
+                                }
+                            ) {
+                                Text("↓")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = selected.isNotEmpty(),
+                onClick = { onSave(selected.toList()) }
+            ) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
 
 @Composable
 fun QuoteCard(text: String, photo: ImageBitmap?, onClick: () -> Unit) {
