@@ -1,4 +1,4 @@
-package com.nexo.launcher
+NNpackage com.nexo.launcher
 
 import android.content.Intent
 import android.content.BroadcastReceiver
@@ -319,7 +319,7 @@ private val SOCIAL_PACKAGES = setOf(
 )
 
 private fun AppItem.matchesAny(vararg terms: String): Boolean {
-    val text = "\({app.label} \){app.pkg}".lowercase(Locale.ROOT)
+    val text = (app.label + " " + app.pkg).lowercase(Locale.ROOT)
     return terms.any { term -> text.contains(term) }
 }
 
