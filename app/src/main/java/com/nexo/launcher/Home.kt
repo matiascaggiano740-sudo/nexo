@@ -597,9 +597,9 @@ private fun OrganizeAppsDialog(
                 apps.sortedBy { it.label.lowercase() }.forEach { app ->
                     var expanded by remember(app.pkg) { mutableStateOf(false) }
                     val currentCategory =
-                        manualCategories[app.pkg]
-                            ?: playCategories[app.pkg]
-                            ?: appCategory(app)
+    manualCategories[app.pkg]
+        ?: if (app.matchesAny("grido", "chef", "daniel", "mcdonald", "pedidosya", "rappi")) "Comida"
+        else (playCategories[app.pkg] ?: appCategory(app))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
