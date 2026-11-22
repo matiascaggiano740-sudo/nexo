@@ -450,10 +450,10 @@ LaunchedEffect(apps) {
         }
     }
 }
-    val categories = remember(apps, q, playCategories) {
+      remember(apps, q, playCategories, manualCategories)
         val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
         listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
-            val members = filtered.filter { (playCategories[it.pkg] ?: appCategory(it)) == name }
+              val members = filtered.filter { (manualCategories[it.pkg] ?: playCategories[it.pkg] ?: appCategory(it)) == name }
             if (members.isEmpty()) null else name to members
         }
     }
