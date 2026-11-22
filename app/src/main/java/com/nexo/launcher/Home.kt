@@ -426,7 +426,47 @@ private fun DrawerCategoryTitle(title: String) {
         Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF24D69B)))
     }
 }
+@Composable
+private fun AppWithCategoryMenu(
+    app: AppItem,
+    category: String,
+    close: () -> Unit,
+    onCategoryChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
 
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        AppIcon(app, 56.dp, Color.White, onLaunch = close)
+
+        Box {
+            TextButton(
+                onClick = { expanded = true },
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text("Mover")
+            }
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                listOf(
+                    "Redes Sociales", "Multimedia", "Juegos", "Google",
+                    "Mapas y viajes", "Finanzas", "Compras", "Productividad",
+                    "Comunicación", "Noticias y lectura", "Herramientas", "Otras"
+                ).forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(if (name == category) "✓ $name" else name) },
+                        onClick = {
+                            onCategoryChange(name)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
 @Composable
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
