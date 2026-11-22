@@ -87,6 +87,15 @@ fun Home() {
     val ctx = LocalContext.current
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
+        var homePackages by remember {
+        mutableStateOf(
+            ctx.getSharedPreferences("nexo_home", 0)
+                .getString("packages", "")
+                ?.split("|")
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+        )
+        }
     var drawer by remember { mutableStateOf(false) }
     var packageRefresh by remember { mutableStateOf(0) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
