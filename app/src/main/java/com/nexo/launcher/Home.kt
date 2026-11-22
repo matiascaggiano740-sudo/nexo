@@ -470,6 +470,7 @@ private fun AppWithCategoryMenu(
 @Composable
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
+    var showOrganizer by remember { mutableStateOf(false) }
     var playCategories by remember { mutableStateOf(emptyMap<String, String>()) }
 val ctx = LocalContext.current
 var manualCategories by remember {
@@ -524,7 +525,11 @@ LaunchedEffect(apps) {
             ) {
                 DropdownMenuItem(
                     text = { Text("Organizar aplicaciones") },
-                    onClick = { menuExpanded = false }
+                    onClick = {
+    menuExpanded = false
+    showOrganizer = true
+}
+
                 )
             }
         }
