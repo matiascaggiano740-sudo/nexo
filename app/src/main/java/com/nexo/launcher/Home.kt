@@ -435,6 +435,7 @@ fun Drawer(apps: List<AppItem>, close: () -> Unit) {
         listOf("Redes Sociales", "Juegos", "Google", "Herramientas", "Otras").mapNotNull { name ->
             val members = filtered.filter { appCategory(it) == name }
             if (members.isEmpty()) null else name to members
+            listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
         }
     }
     Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().padding(horizontal = 20.dp)) {
