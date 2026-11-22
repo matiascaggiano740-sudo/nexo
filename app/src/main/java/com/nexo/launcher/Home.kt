@@ -508,7 +508,20 @@ LaunchedEffect(apps) {
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
                 items(members.chunked(4), key = { row -> row.joinToString { it.pkg } }) { row ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        row.forEach { AppIcon(it, 56.dp, Color.White, onLaunch = close) }
+                        row.forEach { app ->
+    val currentCategory =
+        manualCategories[app.pkg] ?: playCategories[app.pkg] ?: appCategory(app)
+
+    AppWithCategoryMenu(app, currentCategory, close) { newCategory ->
+        ctx.getSharedPreferences("nexo_app_categories", 0)
+            .edit()
+            .putString(app.pkg, newCategory)
+            .apply()
+
+        manualCategories = manualCategories + (app.pkg to newCategory)
+    }
+}
+
                         repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) }
                     }
                 }
