@@ -552,12 +552,27 @@ LaunchedEffect(apps) {
                     }
 
                 }
-            }
+            }        }
+        if (showOrganizer) {
+            OrganizeAppsDialog(
+                apps = apps,
+                playCategories = playCategories,
+                manualCategories = manualCategories,
+                onCategoryChange = { pkg, name ->
+                    ctx.getSharedPreferences("nexo_app_categories", 0)
+                        .edit()
+                        .putString(pkg, name)
+                        .apply()
+                    manualCategories = manualCategories + (pkg to name)
+                },
+                onDismiss = { showOrganizer = false }
+            )
         }
     }
 }
 @Composable
 private fun OrganizeAppsDialog(
+
     apps: List<AppItem>,
     playCategories: Map<String, String>,
     manualCategories: Map<String, String>,
