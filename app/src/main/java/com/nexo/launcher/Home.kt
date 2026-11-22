@@ -193,12 +193,27 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Spacer(Modifier.height(4.dp))
             QuoteCard(quote, photo) { editCard = true }
             Spacer(Modifier.height(12.dp))
-            Spacer(Modifier.weight(1f))
-            Surface(color = Glass, shape = RoundedCornerShape(23.dp),
-                modifier = Modifier.fillMaxWidth().height(46.dp).clickable { drawer = true }) {
-                Box(Modifier.padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
-                    Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Glass,
+                    shape = RoundedCornerShape(23.dp),
+                    modifier = Modifier.weight(1f).height(46.dp).clickable { drawer = true }
+                ) {
+                    Box(Modifier.padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
+                        Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
+                    }
                 }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    color = Glass,
+                    shape = RoundedCornerShape(23.dp),
+                    modifier = Modifier.size(46.dp).clickable { editHome = true }
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("⋮", color = Color.White, fontSize = 25.sp)
+                    }
+                }
+                        }
             }
             Spacer(Modifier.height(10.dp))
             Surface(color = Glass, shape = RoundedCornerShape(32.dp), modifier = Modifier.fillMaxWidth().height(76.dp)) {
