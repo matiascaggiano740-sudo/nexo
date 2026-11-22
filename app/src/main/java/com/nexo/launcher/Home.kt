@@ -581,7 +581,7 @@ private fun OrganizeAppsDialog(
 ) {
     val categoryNames = listOf(
         "Redes Sociales", "Multimedia", "Juegos", "Google",
-        "Mapas y viajes", "Finanzas", "Compras", "Productividad",
+        "Mapas y viajes", "Finanzas", "Compras", "Comida", "Productividad",
         "Comunicación", "Noticias y lectura", "Herramientas", "Otras"
     )
 
