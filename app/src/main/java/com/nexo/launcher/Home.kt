@@ -88,6 +88,8 @@ fun Home() {
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
     var drawer by remember { mutableStateOf(false) }
+    var packageRefresh by remember { mutableStateOf(0) }
+var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     var city by remember { mutableStateOf(savedCity(ctx)) }
