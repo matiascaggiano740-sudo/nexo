@@ -230,7 +230,27 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             folders.find { it.first == name }?.let { FolderPanel(name, it.second) { openFolder = null } }
         }
     }
+    if (editHome) {
+        val currentPackages = if (homePackages.isEmpty()) {
+            priority.map { it.pkg }
+        } else {
+            homePackages
+        }
 
+        HomeAppsDialog(
+            apps = apps,
+            selectedPackages = currentPackages,
+            onDismiss = { editHome = false },
+            onSave = { selected ->
+                ctx.getSharedPreferences("nexo_home", 0)
+                    .edit()
+                    .putString("packages", selected.joinToString("|"))
+                    .apply()
+                homePackages = selected
+                editHome = false
+            }
+        )
+    }
     if (editCity) {
         var t by remember { mutableStateOf(city) }
         AlertDialog(
