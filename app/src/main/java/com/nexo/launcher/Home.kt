@@ -56,7 +56,7 @@ private val Glass = Color.White.copy(alpha = 0.20f)
 private val PRIORITY = listOf(
     listOf("com.whatsapp", "com.whatsapp.w4b"),
     listOf("com.spotify.music"),
-    listOf("com.instagram.androi
+        listOf("com.instagram.android"),
     listOf("com.google.android.apps.maps"),
     listOf("com.miui.gallery", "com.google.android.apps.photos"),
     listOf("com.android.chrome"),
