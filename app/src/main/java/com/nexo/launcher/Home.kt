@@ -472,8 +472,15 @@ private fun AppWithCategoryMenu(
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var showOrganizer by remember { mutableStateOf(false) }
-    var playCategories by remember { mutableStateOf(emptyMap<String, String>()) }
-val ctx = LocalContext.current
+    val ctx = LocalContext.current
+var playCategories by remember {
+    mutableStateOf(
+        ctx.getSharedPreferences("nexo_play_categories", 0)
+            .all
+            .mapNotNull { (key, value) -> (value as? String)?.let { key to it } }
+            .toMap()
+    )
+}
 var manualCategories by remember {
     mutableStateOf(
         ctx.getSharedPreferences("nexo_app_categories", 0)
