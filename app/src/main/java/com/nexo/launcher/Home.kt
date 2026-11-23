@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -429,10 +430,20 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
 }
 
 @Composable
-fun AppIcon(app: AppItem, size: Dp, textColor: Color, showLabel: Boolean = true, onLaunch: () -> Unit = {}) {
+fun AppIcon(
+    app: AppItem,
+    size: Dp,
+    textColor: Color,
+    showLabel: Boolean = true,
+    onLaunch: () -> Unit = {},
+    onLongPress: (() -> Unit)? = null
+) {
     val ctx = LocalContext.current
     Column(
-        Modifier.width(size + 12.dp).clickable { onLaunch(); runCatching { ctx.startActivity(app.intent) } },
+        Modifier.width(size + 12.dp).combinedClickable(
+            onClick = { onLaunch(); runCatching { ctx.startActivity(app.intent) } },
+            onLongClick = onLongPress
+        ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(app.icon, app.label, Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)))
