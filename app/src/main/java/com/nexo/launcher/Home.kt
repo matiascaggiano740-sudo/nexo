@@ -100,6 +100,7 @@ fun Home() {
         }
         var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
+    var editingHome by remember { mutableStateOf(false) }
     var packageRefresh by remember { mutableStateOf(0) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
