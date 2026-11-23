@@ -609,16 +609,22 @@ fun AppIcon(
         Modifier
     }
 
-    Column(
-        Modifier.width(size + 12.dp)
-            .combinedClickable(
+        val iconModifier = Modifier.width(size + 12.dp).let { base ->
+        if (dragPayload != null) {
+            base.then(dragModifier)
+        } else {
+            base.combinedClickable(
                 onClick = {
                     onLaunch()
                     runCatching { ctx.startActivity(app.intent) }
                 },
                 onLongClick = onLongPress
             )
-            .then(dragModifier),
+        }
+    }
+
+    Column(
+        iconModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(app.icon, app.label, Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)))
