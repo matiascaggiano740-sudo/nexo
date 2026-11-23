@@ -20,7 +20,7 @@ fun savedIconTheme(context: Context): IconTheme = IconTheme.fromKey(
 fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (theme) {
     IconTheme.ORIGINAL -> null
     IconTheme.CRAYON -> when (packageName) {
-        "com.instagram.threads" -> R.drawable.icon_crayon_threads
+        "com.instagram.barcelona" -> R.drawable.icon_crayon_threads
         "com.zhiliaoapp.musically" -> R.drawable.icon_crayon_tiktok
         "com.spotify.music" -> R.drawable.icon_crayon_spotify
         "com.facebook.katana" -> R.drawable.icon_crayon_facebook
@@ -39,7 +39,7 @@ fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (them
         "com.google.android.googlequicksearchbox" -> R.drawable.icon_liquid_google
         "com.netflix.mediaclient" -> R.drawable.icon_liquid_netflix
         "com.android.settings" -> R.drawable.icon_liquid_settings
-        "com.instagram.threads" -> R.drawable.icon_liquid_threads
+        "com.instagram.barcelona" -> R.drawable.icon_liquid_threads
         "com.google.android.apps.photos" -> R.drawable.icon_liquid_photos
         "com.google.android.apps.docs" -> R.drawable.icon_liquid_docs
         "com.instagram.android" -> R.drawable.icon_liquid_instagram

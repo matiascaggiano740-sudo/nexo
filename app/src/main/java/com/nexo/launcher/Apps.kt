@@ -17,7 +17,10 @@ fun loadApps(ctx: Context): List<AppItem> {
     val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     val theme = savedIconTheme(ctx)
     return pm.queryIntentActivities(main, 0)
+        .asSequence()
         .filter { it.activityInfo.packageName != ctx.packageName }
+        // Some apps expose several launcher aliases. Keep one entry per package before decoding icons.
+        .distinctBy { it.activityInfo.packageName }
         .mapNotNull { ri ->
             val pkg = ri.activityInfo.packageName
             val launch = pm.getLaunchIntentForPackage(pkg) ?: return@mapNotNull null
@@ -26,8 +29,8 @@ fun loadApps(ctx: Context): List<AppItem> {
             val icon = themeBitmap?.asImageBitmap() ?: ri.loadIcon(pm).toBitmap(128, 128).asImageBitmap()
             AppItem(ri.loadLabel(pm).toString(), pkg, icon, launch, ri.activityInfo.applicationInfo.category, themeBitmap != null)
         }
-        .distinctBy { it.pkg }
         .sortedBy { it.label.lowercase() }
+        .toList()
 }
 
 /** Teléfono, Mensajes y Cámara: las apps predeterminadas del sistema. */
