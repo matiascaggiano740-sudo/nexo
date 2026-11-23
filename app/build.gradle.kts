@@ -18,7 +18,8 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = rootProject.file("nexo-release.jks")
+            storeFile = rootProject.file("nexo-release-final.p12")
+storeType = "PKCS12"
             storePassword = System.getenv("NEXO_STORE_PASSWORD")
                 ?: error("Falta NEXO_STORE_PASSWORD")
             keyAlias = "nexo"
