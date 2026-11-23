@@ -185,7 +185,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Spacer(Modifier.height(16.dp))
             priority.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    row.forEach { AppIcon(it, 60.dp, Color.White) }
+                    row.forEach {
+    AppIcon(it, 60.dp, Color.White, onLongPress = { editingHome = true })
+                    }
                 }
             }
             if (folders.isNotEmpty()) {
