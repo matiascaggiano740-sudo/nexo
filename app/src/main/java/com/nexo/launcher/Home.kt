@@ -283,6 +283,24 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val widgetCellOffset = widgetRows * 4
             homeCapacity = (28 - widgetCellOffset).coerceIn(0, 28)
             val pageAppCellCount = if (homePackages.isEmpty() && currentPage == 0) priority.size else homePackages.count { it != "-" }
+            LaunchedEffect(currentPage, widgetCellOffset, apps) {
+                if (apps.isEmpty()) return@LaunchedEffect
+                val saved = homePages.getOrNull(currentPage).orEmpty()
+                val source = if (saved.isEmpty() && currentPage == 0) priority.map { it.pkg } else saved
+                val compacted = (List(widgetCellOffset.coerceAtMost(28)) { "-" } + source.filter { it != "-" }.take((28 - widgetCellOffset).coerceAtLeast(0)))
+                val normalized = (compacted + List((28 - compacted.size).coerceAtLeast(0)) { "-" }).take(28)
+                if (saved != normalized) {
+                    val updated = homePages.toMutableList().apply {
+                        while (size <= currentPage) add(emptyList())
+                        this[currentPage] = normalized
+                    }
+                    homePages = updated
+                    homePackages = normalized
+                    ctx.getSharedPreferences("nexo_home", 0).edit()
+                        .putString("packages", updated.firstOrNull().orEmpty().joinToString("|"))
+                        .putString("pages", updated.joinToString("~") { it.joinToString("|") }).apply()
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
@@ -339,7 +357,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         }
                     } else {
                     val index = itemIndex - pageWidgetIds.size
-                    val logicalIndex = index
+                    val logicalIndex = index + widgetCellOffset
                     val slot = homeSlots.getOrNull(logicalIndex)
                     val folderName = slot?.takeIf { it.startsWith("folder:") }?.removePrefix("folder:")
                     val folderApps = folderName?.let { name -> userFolders.find { it.first == name }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } } }.orEmpty()
@@ -350,7 +368,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         folderApps = folderApps,
                         onFolderClick = { if (folderName != null) openFolder = "user:$folderName" },
                         onFolderEdit = { if (folderName != null) userFolders.find { it.first == folderName }?.let { folderEditor = it } },
-                        index = index,
+                        index = logicalIndex,
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
                         onRemove = { pkg ->
@@ -418,7 +436,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                             if (folder.first == draggedFolder.first) folder.first to (folder.second + existingApp.pkg).distinct() else folder
                                         }
                                         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-                                        dest[logicalTargetIndex] = "-"
+                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
+                                        dest[logicalTargetIndex] = draggedPkg
                                     } else if (existingApp != null && draggedApp != null) {
                                         var folderName = "Carpeta"
                                         var suffix = 1
@@ -508,11 +527,12 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
                                         ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
                                     val appCapacity = (28 - widgetCells).coerceAtLeast(0)
+                                    val appStart = widgetCells.coerceAtMost(28)
                                     if (token in dest) {
                                         currentPage = page; homePackages = dest.toList()
                                     } else {
-                                        while (dest.size < appCapacity) dest.add("-")
-                                        val free = (0 until appCapacity).firstOrNull { dest.getOrNull(it) == "-" }
+                                        while (dest.size < 28) dest.add("-")
+                                        val free = (appStart until 28).firstOrNull { dest.getOrNull(it) == "-" }
                                         if (free == null) Toast.makeText(ctx, "No hay una celda libre en esa página", Toast.LENGTH_SHORT).show()
                                         else {
                                             if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(token)] = "-"
@@ -664,13 +684,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val pageWidgetArea = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
             ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
         val pageCellLimit = (28 - pageWidgetArea).coerceAtLeast(0)
-        val visibleRange = 0 until pageCellLimit
-        val emptySlot = targetPage.take(pageCellLimit).indexOfFirst { it == "-" }
+        val pageOffset = pageWidgetArea.coerceAtMost(28)
+        val visibleRange = pageOffset until 28
+        val emptyRelative = targetPage.drop(pageOffset).take(pageCellLimit).indexOfFirst { it == "-" }
+        val emptySlot = if (emptyRelative >= 0) pageOffset + emptyRelative else -1
         val folderSlot = when {
             existingFolderSlot in visibleRange -> existingFolderSlot
             reusableIndex in visibleRange -> reusableIndex
             emptySlot >= 0 -> emptySlot
-            targetPage.size < pageCellLimit -> targetPage.size.also { targetPage.add("-") }
+            targetPage.size < 28 -> (pageOffset + pageCellLimit).coerceAtMost(28).also { while (targetPage.size <= it) targetPage.add("-") }
             else -> -1
         }
         if (folderSlot < 0) {
@@ -1117,7 +1139,7 @@ private fun HomeAppCell(
             .fillMaxWidth()
             .height(90.dp)
             .then(
-                if (app == null) {
+                if (app == null && folderName == null) {
                     Modifier.pointerInput(index) {
                         detectTapGestures(onLongPress = { onLongPress() })
                     }

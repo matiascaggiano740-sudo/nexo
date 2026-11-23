@@ -91,7 +91,10 @@ class MainActivity : ComponentActivity() {
                     val bind = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
-                    startActivityForResult(bind, REQUEST_BIND)
+                    runCatching { startActivityForResult(bind, REQUEST_BIND) }.onFailure {
+                        widgetHost.deleteAppWidgetId(id)
+                        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+                    }
                 }
             }
             REQUEST_BIND -> launchConfiguration(id)
@@ -231,8 +234,9 @@ class MainActivity : ComponentActivity() {
         manager.updateAppWidgetOptions(id, Bundle().apply {
             putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, widthDp)
             putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, widthDp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, info.minHeight.coerceAtLeast(96))
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, info.minHeight.coerceAtLeast(96))
+            val height = widgetHeightDp(id)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, height)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, height)
         })
         widgetHost.createView(this, id, info).apply { setAppWidget(id, info) }
     }.getOrNull()
