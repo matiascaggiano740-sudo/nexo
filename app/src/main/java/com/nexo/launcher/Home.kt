@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.ClipData
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import android.content.ClipDescription
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.draganddrop.dragAndDropSource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -159,6 +164,36 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
     val folders = FOLDERS.mapNotNull { (name, pkgs) ->
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
+            val homeDropTarget = remember(editingHome, homePackages, priority, apps) {
+        object :             .dragAndDropTarget(
+                shouldStartDragAndDrop = { event ->
+                    editingHome && event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                },
+                target = homeDropTarget
+            )
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                if (!editingHome) return false
+
+                val clip = event.toAndroidDragEvent().clipData ?: return false
+                if (clip.itemCount == 0) return false
+
+                val pkg = clip.getItemAt(0).text?.toString() ?: return false
+                if (apps.none { it.pkg == pkg }) return false
+
+                val current = if (homePackages.isEmpty()) priority.map { it.pkg } else homePackages
+                if (pkg !in current) {
+                    val updated = current + pkg
+                    ctx.getSharedPreferences("nexo_home", 0).edit()
+                        .putString("packages", updated.joinToString("|"))
+                        .apply()
+                    homePackages = updated
+                }
+
+                drawer = false
+                return true
+            }
+        }
+            }
         if (found.isEmpty()) null else name to found
     }
     val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
