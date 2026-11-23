@@ -150,6 +150,8 @@ fun Home() {
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
+    var showBackupDialog by remember { mutableStateOf(false) }
+    var pendingImportText by remember { mutableStateOf<String?>(null) }
     var homeCapacity by remember { mutableIntStateOf(28) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
@@ -169,6 +171,25 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             savePhoto(ctx, uri.toString())
             photoTick++
+        }
+    }
+    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            runCatching {
+                val contents = LauncherBackup.export(ctx, launcherActivity).toByteArray(Charsets.UTF_8)
+                val output = ctx.contentResolver.openOutputStream(uri) ?: error("No se pudo crear el archivo")
+                output.use { it.write(contents) }
+            }.onSuccess { Toast.makeText(ctx, "Respaldo exportado", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(ctx, "No se pudo exportar el respaldo", Toast.LENGTH_LONG).show() }
+        }
+    }
+    val importBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                val text = LauncherBackup.read(ctx, uri)
+                LauncherBackup.parse(text)
+                pendingImportText = text
+            }.onFailure { Toast.makeText(ctx, it.message ?: "El archivo no es un respaldo válido", Toast.LENGTH_LONG).show() }
         }
     }
     LaunchedEffect(Unit) {
@@ -588,6 +609,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             })
                     }
                     if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
+                    if (editingHome) TextButton(onClick = { showBackupDialog = true }) { Text("Respaldo", color = Color.White) }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
                 }
             }
@@ -679,6 +701,47 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 openFolder = null
             })
         }
+    }
+    if (showBackupDialog) AlertDialog(
+        onDismissRequest = { showBackupDialog = false },
+        title = { Text("Respaldo de NEXO") },
+        text = { Text("Exporta o restaura páginas, posiciones, carpetas, dock, ciudad, frase, imagen de la tarjeta y categorías manuales. La restauración reemplaza esos datos. Los widgets solo se reasignan si ya existen en este teléfono; los demás habrá que agregarlos y configurarlos. El fondo del sistema no se incluye.") },
+        confirmButton = { TextButton(onClick = {
+            showBackupDialog = false
+            exportBackup.launch("NEXO-respaldo.json")
+        }) { Text("Exportar archivo") } },
+        dismissButton = { Row {
+            TextButton(onClick = {
+                showBackupDialog = false
+                importBackup.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
+            }) { Text("Importar") }
+            TextButton(onClick = { showBackupDialog = false }) { Text("Cancelar") }
+        } }
+    )
+    pendingImportText?.let { backupText ->
+        AlertDialog(
+            onDismissRequest = { pendingImportText = null },
+            title = { Text("¿Restaurar este respaldo?") },
+            text = { Text("Se reemplazarán la distribución del inicio, las carpetas, el dock, la ciudad, la frase, la imagen de tarjeta y las categorías manuales actuales.") },
+            confirmButton = { TextButton(onClick = {
+                runCatching {
+                    val saved = LauncherBackup.restore(ctx, LauncherBackup.parse(backupText))
+                    homePages = saved.pages
+                    homePackages = saved.pages.firstOrNull().orEmpty()
+                    currentPage = 0
+                    dockPackages = saved.dock
+                    dock = saved.dock.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                    userFolders = saved.folders
+                    city = saved.city
+                    quote = saved.quote
+                    photoTick++
+                    val widgetCounts = launcherActivity?.restoreWidgetPlacements(saved.widgetSpecs, saved.pages.size) ?: (0 to saved.widgetSpecs.length())
+                    pendingImportText = null
+                    Toast.makeText(ctx, "Respaldo restaurado. ${widgetCounts.second} widget(s) requieren agregarse de nuevo.", Toast.LENGTH_LONG).show()
+                }.onFailure { Toast.makeText(ctx, it.message ?: "No se pudo restaurar el respaldo", Toast.LENGTH_LONG).show() }
+            }) { Text("Restaurar") } },
+            dismissButton = { TextButton(onClick = { pendingImportText = null }) { Text("Cancelar") } }
+        )
     }
     if (editCity) {
         var t by remember { mutableStateOf(city) }

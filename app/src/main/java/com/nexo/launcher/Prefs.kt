@@ -16,17 +16,22 @@ fun saveCity(ctx: Context, v: String) = prefs(ctx).edit().putString("city", v).a
 fun savedQuote(ctx: Context): String = prefs(ctx).getString("quote", DEFAULT_QUOTE) ?: DEFAULT_QUOTE
 fun saveQuote(ctx: Context, v: String) = prefs(ctx).edit().putString("quote", v).apply()
 
-fun savePhoto(ctx: Context, uri: String) = prefs(ctx).edit().putString("photo", uri).apply()
+fun savePhoto(ctx: Context, uri: String) = prefs(ctx).edit().putString("photo", uri).remove("photo_backup_b64").apply()
 
 fun loadCardPhoto(ctx: Context): ImageBitmap? {
-    val s = prefs(ctx).getString("photo", null) ?: return null
-    return runCatching {
-        val uri = Uri.parse(s)
+    val p = prefs(ctx)
+    val s = p.getString("photo", null)
+    val fromUri = s?.let { uriText -> runCatching {
+        val uri = Uri.parse(uriText)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         var sample = 1
         while (bounds.outWidth / sample > 1600) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }?.asImageBitmap()
-    }.getOrNull()
+    }.getOrNull() }
+    fromUri ?: p.getString("photo_backup_b64", null)?.let { encoded -> runCatching {
+        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    }.getOrNull() }
 }

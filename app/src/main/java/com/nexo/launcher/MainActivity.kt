@@ -14,6 +14,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import org.json.JSONArray
 
 class MainActivity : ComponentActivity() {
     private lateinit var widgetHost: AppWidgetHost
@@ -209,6 +210,44 @@ class MainActivity : ComponentActivity() {
 
     fun widgetHeightDp(id: Int): Int = hostedWidgetHeights[id]
         ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight?.coerceAtLeast(96) ?: 132
+
+    /** Restores metadata only for widget instances that still exist; never fabricates widget IDs. */
+    fun restoreWidgetPlacements(specs: JSONArray, pageCount: Int): Pair<Int, Int> {
+        val manager = AppWidgetManager.getInstance(this)
+        val used = mutableSetOf<Int>()
+        var restored = 0
+        var needsReAdd = 0
+        for (index in 0 until specs.length()) {
+            val spec = specs.optJSONObject(index) ?: continue
+            val provider = spec.optString("provider")
+            val pkg = spec.optString("package")
+            val match = hostedWidgetIds.firstOrNull { id ->
+                id !in used && manager.getAppWidgetInfo(id)?.let { info ->
+                    info.provider.flattenToString() == provider || (provider.isBlank() && info.provider.packageName == pkg)
+                } == true
+            }
+            if (match == null) {
+                needsReAdd++
+                continue
+            }
+            used += match
+            hostedWidgetPages[match] = spec.optInt("page", 0).coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            val info = manager.getAppWidgetInfo(match)
+            if (info != null && spec.has("heightDp")) {
+                val minimum = info.minResizeHeight.takeIf { it > 0 } ?: info.minHeight.coerceAtLeast(96)
+                val maximum = info.maxResizeHeight.takeIf { it > 0 } ?: 700
+                val height = spec.optInt("heightDp", minimum).coerceIn(minimum, maxOf(minimum, maximum))
+                hostedWidgetHeights[match] = height
+                manager.updateAppWidgetOptions(match, Bundle().apply {
+                    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, height)
+                    putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, height)
+                })
+            }
+            restored++
+        }
+        persistWidgetState()
+        return restored to needsReAdd
+    }
 
     fun canResizeWidget(id: Int): Boolean {
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return false
