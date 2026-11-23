@@ -397,7 +397,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             val draggedFolderName = draggedPkg.removePrefix("folder:").takeIf { draggedPkg.startsWith("folder:") }
                             val draggedFolder = draggedFolderName?.let { name -> userFolders.find { it.first == name } }
                             val draggedAllowed = if (draggedFolderName != null) draggedFolder != null else apps.any { it.pkg == draggedPkg }
-                            if (draggedAllowed && targetIndex in 0 until homeCapacity) {
+                            if (draggedAllowed && targetIndex in widgetCellOffset until (widgetCellOffset + homeCapacity)) {
                                 val pages = homePages.map { it.toMutableList() }.toMutableList()
                                 if (pages.isNotEmpty() && pages[0].isEmpty()) {
                                     pages[0].addAll(priority.map { it.pkg })
@@ -461,14 +461,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     sourceSlots[sourceIndex] = displaced ?: "-"
                                     dest[logicalTargetIndex] = draggedPkg
                                 } else {
-                                    val emptyIndex = dest.indexOfFirst { it == "-" }
-                                    if (emptyIndex < 0) {
-                                        Toast.makeText(ctx, "No hay espacio libre en esta página", Toast.LENGTH_SHORT).show()
-                                        canApplyDrop = false
-                                    } else {
-                                        for (i in emptyIndex downTo logicalTargetIndex + 1) dest[i] = dest[i - 1]
-                                        dest[logicalTargetIndex] = draggedPkg
-                                    }
+                                    dest[logicalTargetIndex] = draggedPkg
                                 }
 
                                 if (canApplyDrop) {
