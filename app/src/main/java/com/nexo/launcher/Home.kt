@@ -364,6 +364,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             )
     ) {
         val pageSwipeOffset = remember { Animatable(0f) }
+        val pageSwipeScope = rememberCoroutineScope()
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)
                 .graphicsLayer { translationX = pageSwipeOffset.value }
@@ -372,7 +373,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         detectHorizontalDragGestures(
                             onHorizontalDrag = { change, amount ->
                                 change.consume()
-                                launch { pageSwipeOffset.snapTo(pageSwipeOffset.value + amount) }
+                                pageSwipeScope.launch { pageSwipeOffset.snapTo(pageSwipeOffset.value + amount) }
                             },
                             onDragEnd = {
                                 val direction = when {
@@ -380,7 +381,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     pageSwipeOffset.value > 55f && currentPage > 0 -> -1
                                     else -> 0
                                 }
-                                launch {
+                                pageSwipeScope.launch {
                                     if (direction != 0) {
                                         val width = size.width.toFloat()
                                         pageSwipeOffset.animateTo(if (direction > 0) -width else width, tween(180))
@@ -462,7 +463,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxWidth(),
                 userScrollEnabled = true,
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
