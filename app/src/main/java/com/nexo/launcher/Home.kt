@@ -17,9 +17,6 @@ import androidx.core.content.ContextCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -50,6 +47,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
@@ -67,6 +65,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -359,6 +359,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
     var pageSwipeX by remember { mutableFloatStateOf(0f) }
     val pageSwipeScope = rememberCoroutineScope()
+    val pageSwipeThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
@@ -379,8 +380,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onDragEnd = {
                             val dragStart = pageSwipeX
                             val direction = when {
-                                dragStart < -55f && currentPage < homePages.lastIndex -> 1
-                                dragStart > 55f && currentPage > 0 -> -1
+                                dragStart < -pageSwipeThresholdPx && currentPage < homePages.lastIndex -> 1
+                                dragStart > pageSwipeThresholdPx && currentPage > 0 -> -1
                                 else -> 0
                             }
                             val width = size.width.toFloat()
@@ -458,7 +459,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 index == 0 -> "home-header-page-$currentPage"
                                 index <= pageWidgetIds.size -> "widget-${pageWidgetIds[index - 1]}"
                                 quoteItemCount > 0 && index == 1 + pageWidgetIds.size + pageCapacity -> "quote-widget-page-0"
-                                else -> "home-cell-${index - 1 - pageWidgetIds.size}"
+                                else -> "home-cell-$currentPage-${index - 1 - pageWidgetIds.size}"
                             }
                         },
                         span = { index -> if (index == 0 || index in 1..pageWidgetIds.size || (quoteItemCount > 0 && index == 1 + pageWidgetIds.size + pageCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
@@ -526,7 +527,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = logicalIndex,
                         editingHome = editingHome,
                         cellHeight = cellHeight,
-                        iconSize = (cellHeight - 22.dp).coerceIn(48.dp, 60.dp),
+                        iconSize = (cellHeight * 0.54f).coerceIn(42.dp, 56.dp),
                         onLongPress = { editingHome = true },
                         onDoubleTapEmpty = {
                             if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
@@ -692,7 +693,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             if (homePages.size > 1) {
                 Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 0.dp, bottom = 4.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 40.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -753,10 +754,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
-                    modifier = Modifier.fillMaxWidth().height(46.dp).clickable { drawer = true }
+                    modifier = Modifier.weight(1f).height(48.dp).clickable { drawer = true }
                 ) {
-                    Box(Modifier.padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
-                        Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
+                    Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Buscar apps y web", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { drawer = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                            Text("Apps", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -817,8 +821,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
                         Spacer(Modifier.height(10.dp))
         }
-        AnimatedVisibility(drawer, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            Drawer(apps, editingHome, onAppLongPress = { app -> showShortcutsFor(app) }) { drawer = false }
+        if (drawer) {
+            Box(Modifier.fillMaxSize().zIndex(10f)) {
+                Drawer(apps, editingHome, onAppLongPress = { app -> showShortcutsFor(app) }) { drawer = false }
+            }
         }
         openFolder?.let { name ->
             val contents = if (name.startsWith("user:")) {
@@ -1299,11 +1305,14 @@ private fun HomeHeader(
     onLongPress: () -> Unit,
     onWeatherClick: () -> Unit
 ) {
-    Column(modifier.padding(top = 2.dp)) {
+    BoxWithConstraints(modifier) {
+        val clockFontSize = (maxHeight.value * 0.32f).coerceIn(34f, 58f).sp
+        Column(Modifier.fillMaxSize().padding(top = 2.dp)) {
         Text(
             now.format(DateTimeFormatter.ofPattern("HH:mm")),
             color = Color.White,
-            fontSize = 64.sp,
+            fontSize = clockFontSize,
+            maxLines = 1,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.Light,
             modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress)
@@ -1326,6 +1335,7 @@ private fun HomeHeader(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
         }
     }
 }
@@ -1478,7 +1488,7 @@ fun AppIcon(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 6.dp)
+                modifier = Modifier.padding(top = 9.dp)
             )
         }
     }
@@ -1706,13 +1716,14 @@ private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit
             }
         }
     }
-    Box(Modifier.dragAndDropTarget(
-        shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
-            ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
-    )) {
-        TextButton(onClick = onSelect) {
-            Text(if (selected) "●" else "○", color = Color.White, fontSize = 12.sp)
-        }
+    Box(Modifier.size(40.dp)
+        .semantics { contentDescription = "Ir a la página ${page + 1}" }
+        .clickable(onClick = onSelect)
+        .dragAndDropTarget(
+            shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
+                ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
+        ), contentAlignment = Alignment.Center) {
+        Text(if (selected) "●" else "○", color = Color.White, fontSize = 12.sp)
     }
 }
 
@@ -2057,13 +2068,16 @@ LaunchedEffect(apps) {
     Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().padding(horizontal = 20.dp)) {
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(10.dp))
 
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-
+        TextButton(onClick = close, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
+            Text("Cerrar", color = Color.White, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.width(6.dp))
         OutlinedTextField(
             q,
             { q = it },
