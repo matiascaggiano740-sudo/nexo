@@ -68,6 +68,7 @@ import java.util.Locale
 
 private val Cream = Color(0xFFF3EEE4)
 private val Brown = Color(0xFF3A342C)
+p
 private val Glass = Color.White.copy(alpha = 0.20f)
 
 private val PRIORITY = listOf(
@@ -232,8 +233,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
             Text(date, color = Color.White, fontSize = 15.sp)
-            Spacer(Modifier.height(12.dp))
-                                    LazyVerticalGrid(
+                        LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
                     .weight(1f)
@@ -246,15 +246,49 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(priority.take(homeCapacity), key = { it.pkg }) { app ->
-                    AppIcon(
-                        app,
-                        60.dp,
-                        Color.White,
-                        onLongPress = { editingHome = true }
+                items(
+                    count = homeCapacity,
+                    key = { index -> "home-cell-$index" }
+                ) { index ->
+                    val app = priority.getOrNull(index)
+                    HomeAppCell(
+                        app = app,
+                        index = index,
+                        editingHome = editingHome,
+                        onLongPress = { editingHome = true },
+                        onDrop = { draggedPkg, targetIndex ->
+                            if (apps.any { it.pkg == draggedPkg }) {
+                                val current = if (homePackages.isEmpty()) {
+                                    priority.map { it.pkg }
+                                } else {
+                                    homePackages
+                                }
+
+                                if (draggedPkg !in current && current.size >= homeCapacity) {
+                                    Toast.makeText(
+                                        ctx,
+                                        "No hay espacio libre en inicio",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } else {
+                                    val updated = current.toMutableList()
+                                    updated.remove(draggedPkg)
+                                    updated.add(
+                                        targetIndex.coerceIn(0, updated.size),
+                                        draggedPkg
+                                    )
+                                    ctx.getSharedPreferences("nexo_home", 0)
+                                        .edit()
+                                        .putString("packages", updated.joinToString("|"))
+                                        .apply()
+                                    homePackages = updated
+                                    drawer = false
+                                }
+                            }
+                        }
                     )
                 }
-            }
+                        }
 
 
             if (folders.isNotEmpty()) {
