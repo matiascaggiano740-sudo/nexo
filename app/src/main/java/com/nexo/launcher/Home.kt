@@ -212,11 +212,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
-                    modifier = Modifier.size(46.dp).clickable { editHome = true }
+                    modifier = Modifier.size(46.dp).clickable { editingHome = !editingHome }
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("⋮", color = Color.White, fontSize = 25.sp)
-                    }
+                        Text(if (editingHome) "✓" else "⋮", color = Color.White, fontSize = 25.sp)
                 }
                         }
             Spacer(Modifier.height(10.dp))
