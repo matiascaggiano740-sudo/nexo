@@ -31,6 +31,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.draganddrop.DragAndDropTransferData
+import androidx.compose.ui.draganddrop.dragAndDropSource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -458,11 +461,7 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
                         repeat(3 - row.size) { Spacer(Modifier.width(68.dp)) }
                     }
                 }
-            }
-        }
-    }
-}
-@OptIn(ExperimentalFoundationApi::class)
+            @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun AppIcon(
     app: AppItem,
@@ -470,17 +469,46 @@ fun AppIcon(
     textColor: Color,
     showLabel: Boolean = true,
     onLaunch: () -> Unit = {},
-    onLongPress: (() -> Unit)? = null
+    onLongPress: (() -> Unit)? = null,
+    dragPayload: String? = null
 ) {
     val ctx = LocalContext.current
+    val dragModifier = if (dragPayload != null) {
+        Modifier.dragAndDropSource { _ ->
+            DragAndDropTransferData(
+                ClipData.newPlainText("nexo-app", dragPayload)
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Column(
-        Modifier.width(size + 12.dp).combinedClickable(
-            onClick = { onLaunch(); runCatching { ctx.startActivity(app.intent) } },
-            onLongClick = onLongPress
-        ),
+        Modifier.width(size + 12.dp)
+            .combinedClickable(
+                onClick = {
+                    onLaunch()
+                    runCatching { ctx.startActivity(app.intent) }
+                },
+                onLongClick = onLongPress
+            )
+            .then(dragModifier),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(app.icon, app.label, Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)))
+        if (showLabel) {
+            Text(
+                app.label,
+                color = textColor,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+    }
+}
         if (showLabel) Text(app.label, color = textColor, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
     }
