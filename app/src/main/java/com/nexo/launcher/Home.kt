@@ -142,7 +142,7 @@ fun Home() {
     // Dock shortcuts are intentional launch points, but are not repeated in the home grid.
     val defaultHomeApps = PRIORITY.mapNotNull { group ->
         group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
-    }.filterNot { app -> app.pkg in dockPackages }
+    }
     var homePackages by remember {
         val prefs = ctx.getSharedPreferences("nexo_home", 0)
         val savedPages = prefs.getString("pages", "")?.takeIf { it.isNotBlank() }
@@ -350,9 +350,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     }
 
     val homeSlots: List<String?> = if (homePackages.isEmpty() && currentPage == 0) {
-        priority.filterNot { it.pkg in dockPackages }.map { it.pkg }
+        priority.map { it.pkg }
     } else {
-        homePackages.map { token -> token.takeIf { value -> value != "-" && value !in dockPackages } }
+        homePackages.map { it.takeIf { value -> value != "-" } }
     }
 
     val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
@@ -406,6 +406,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
     ) {
+        launcherActivity?.currentWallpaper?.value?.let { wallpaper ->
+            Image(wallpaper, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x44000000), Color(0x22000000), Color(0x77000000)))))
+        }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val nativeWidgetRows = pageWidgetIds.sumOf { id ->
@@ -420,7 +424,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val firstAppCell = (headerCellCount + widgetCellOffset).coerceAtMost(28)
             val appEndCell = (28 - quoteCellCount).coerceAtLeast(firstAppCell)
             val pageCapacity = (appEndCell - firstAppCell).coerceAtLeast(0)
-            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) defaultHomeApps.size else homePackages.count { it != "-" && it !in dockPackages }) + headerCellCount + quoteCellCount
+            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) defaultHomeApps.size else homePackages.count { it != "-" }) + headerCellCount + quoteCellCount
             val widgetLayoutKey = launcherActivity?.hostedWidgetIds?.joinToString(",") { id ->
                 "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}"
             }.orEmpty()
@@ -433,7 +437,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     pages = homePages,
                     widgetRowsByPage = widgetRowsByPage,
                     defaultPackages = defaultHomeApps.map { it.pkg },
-                ).map { page -> page.map { token -> if (token in dockPackages) "-" else token } }
+                )
                 if (migrated != homePages) {
                     homePages = migrated
                     homePackages = migrated.getOrNull(currentPage).orEmpty()
@@ -910,7 +914,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Text("Las imágenes se usan tal como fueron entregadas. Las apps sin una correspondencia identificable conservan el icono original del POCO.", style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(8.dp))
             IconTheme.entries.forEach { option ->
-                Row(Modifier.fillMaxWidth().clickable {
+                Row(Modifier.fillMaxWidth().testTag("icon-theme-option-${option.key}").clickable {
                     showIconThemeDialog = false
                     if (option != iconTheme) {
                         ctx.getSharedPreferences("nexo_icon_settings", 0).edit().putString("theme", option.key).apply()
@@ -1572,7 +1576,7 @@ private fun HomeEditOverview(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 HomeEditActionCard("+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder)
-                HomeEditActionCard("Iconos", "Elegir estilo", Modifier.weight(1f), onIcons)
+                HomeEditActionCard("Iconos", "Elegir estilo", Modifier.weight(1f), onIcons, testTag = "icon-theme-open")
                 HomeEditActionCard("Páginas", "Ordenar o borrar", Modifier.weight(1f), onManage)
             }
             HomeEditActionCard("Respaldo", "Guardar o restaurar la distribución del inicio", Modifier.fillMaxWidth(), onBackup, compact = true)
@@ -1600,7 +1604,7 @@ private fun HomeMiniPagePreview(
         color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
         border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
         modifier = modifier.semantics {
-            contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it != "-" && it !in dockPackages }} apps"
+            contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it != "-" }} apps"
         }.clickable(onClick = onClick)
     ) {
         Column(
@@ -2076,7 +2080,7 @@ LaunchedEffect(apps) {
             if (members.isEmpty()) null else name to members
         }
     }
-    Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
     var menuExpanded by remember { mutableStateOf(false) }
 
     Spacer(Modifier.height(10.dp))
