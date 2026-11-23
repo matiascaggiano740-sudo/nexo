@@ -492,9 +492,45 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         homePackages = emptyList()
                     }) { Text("＋ Página", color = Color.White) }
                     homePages.indices.forEach { page ->
-                        TextButton(onClick = { currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() }) {
-                            Text(if (currentPage == page) "●" else "○", color = Color.White, fontSize = 12.sp)
-                        }
+                        HomePageIndicator(page = page, selected = currentPage == page,
+                            onSelect = { currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
+                            onDrop = { payload ->
+                                val fromDock = payload.startsWith("dock:")
+                                val token = payload.removePrefix("home:").removePrefix("dock:")
+                                val isFolder = token.startsWith("folder:") && userFolders.any { it.first == token.removePrefix("folder:") }
+                                val valid = isFolder || apps.any { it.pkg == token }
+                                if (valid && page in homePages.indices) {
+                                    val pages = homePages.map { it.toMutableList() }.toMutableList()
+                                    if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(priority.map { it.pkg })
+                                    val sourcePage = pages.indexOfFirst { token in it }
+                                    val dest = pages[page]
+                                    val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
+                                        ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
+                                    val start = widgetCells.coerceAtMost(28)
+                                    val end = 28
+                                    if (token in dest) {
+                                        currentPage = page; homePackages = dest.toList()
+                                    } else {
+                                        while (dest.size < end) dest.add("-")
+                                        val free = (start until end).firstOrNull { dest[it] == "-" }
+                                        if (free == null) Toast.makeText(ctx, "No hay una celda libre en esa página", Toast.LENGTH_SHORT).show()
+                                        else {
+                                            if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(token)] = "-"
+                                            dest[free] = token
+                                            val saved = pages.map { it.toList() }
+                                            ctx.getSharedPreferences("nexo_home", 0).edit()
+                                                .putString("packages", saved.firstOrNull().orEmpty().joinToString("|"))
+                                                .putString("pages", saved.joinToString("~") { it.joinToString("|") }).apply()
+                                            homePages = saved; currentPage = page; homePackages = dest.toList()
+                                            if (fromDock) {
+                                                dockPackages = dockPackages.map { if (it == token) "-" else it }
+                                                dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                                                ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|")).apply()
+                                            }
+                                        }
+                                    }
+                                }
+                            })
                     }
                     if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
@@ -984,6 +1020,30 @@ fun AppIcon(
         }
     }
 }
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit, onDrop: (String) -> Unit) {
+    val target = remember(page, onDrop) {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                val clip = event.toAndroidDragEvent().clipData ?: return false
+                if (clip.itemCount == 0) return false
+                val payload = clip.getItemAt(0).text?.toString() ?: return false
+                onDrop(payload)
+                return true
+            }
+        }
+    }
+    Box(Modifier.dragAndDropTarget(
+        shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
+            ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
+    )) {
+        TextButton(onClick = onSelect) {
+            Text(if (selected) "●" else "○", color = Color.White, fontSize = 12.sp)
+        }
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun DockCell(
