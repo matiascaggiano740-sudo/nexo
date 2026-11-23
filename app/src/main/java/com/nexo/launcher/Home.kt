@@ -188,6 +188,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     row.forEach {
     AppIcon(it, 60.dp, Color.White, onLongPress = { editingHome = true })
                     }
+    AppIcon(it, 60.dp, Color.White, onLongPress = { editingHome = true })
+                    }
                 }
             }
             if (folders.isNotEmpty()) {
