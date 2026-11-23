@@ -1,6 +1,10 @@
 package com.nexo.launcher
 
 import android.content.Intent
+import android.graphics.Rect
+import android.graphics.Point
+import android.graphics.Paint
+import android.graphics.Canvas
 import android.content.ClipData
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
@@ -50,9 +54,11 @@ import android.view.View
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontFamily
@@ -313,15 +319,27 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ) { itemIndex ->
                     if (itemIndex < pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex]
+                        var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
                         val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(320) ?: 132) + 99) / 100).coerceAtLeast(1) * 100
                         Box(Modifier.fillMaxWidth().height(widgetRowsHeight.dp)) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
                                 AndroidView(factory = { activity -> launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity) }, modifier = Modifier.fillMaxSize())
                             }
-                            if (editingHome) Row(Modifier.align(Alignment.TopEnd).background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(20.dp))) {
+                            if (editingHome) Row(Modifier.align(Alignment.TopEnd).background(Color.White.copy(alpha = 0.88f), RoundedCornerShape(20.dp))) {
+                                TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, -1) }) { Text("↑") }
+                                Box {
+                                    TextButton(onClick = { showWidgetPageMenu = true }) { Text("Página") }
+                                    DropdownMenu(expanded = showWidgetPageMenu, onDismissRequest = { showWidgetPageMenu = false }) {
+                                        homePages.indices.forEach { destination -> DropdownMenuItem(
+                                            text = { Text("Página ${destination + 1}") },
+                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size); showWidgetPageMenu = false }
+                                        ) }
+                                    }
+                                }
                                 TextButton(onClick = { launcherActivity?.resizeWidget(widgetId, -90) }) { Text("−") }
                                 TextButton(onClick = { launcherActivity?.removeWidget(widgetId) }) { Text("Quitar", color = Color(0xFFB3261E)) }
                                 TextButton(onClick = { launcherActivity?.resizeWidget(widgetId, 90) }) { Text("＋") }
+                                TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }) { Text("↓") }
                             }
                         }
                     } else {
@@ -757,6 +775,21 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+private class AppIconDragShadowBuilder(
+    view: View,
+    private val bitmap: android.graphics.Bitmap,
+    private val sizePx: Int
+) : View.DragShadowBuilder(view) {
+    override fun onProvideShadowMetrics(outShadowSize: Point, outShadowTouchPoint: Point) {
+        outShadowSize.set(sizePx, sizePx)
+        outShadowTouchPoint.set(sizePx / 2, sizePx / 2)
+    }
+
+    override fun onDrawShadow(canvas: Canvas) {
+        canvas.drawBitmap(bitmap, null, Rect(0, 0, sizePx, sizePx), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+    }
+}
+
 @Composable
 fun AppIcon(
     app: AppItem,
@@ -769,6 +802,7 @@ fun AppIcon(
 ) {
     val ctx = LocalContext.current
     val dragView = LocalView.current
+    val density = LocalDensity.current.density
     val iconModifier = Modifier
         .width(size + 12.dp)
         .combinedClickable(
@@ -781,7 +815,7 @@ fun AppIcon(
                     val clip = ClipData.newPlainText("nexo-app", dragPayload)
                     dragView.startDragAndDrop(
                         clip,
-                        View.DragShadowBuilder(dragView),
+                        AppIconDragShadowBuilder(dragView, app.icon.asAndroidBitmap(), (size.value * density).toInt().coerceAtLeast(48)),
                         dragPayload,
                         View.DRAG_FLAG_GLOBAL
                     )

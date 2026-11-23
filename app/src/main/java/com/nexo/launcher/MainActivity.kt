@@ -112,6 +112,33 @@ class MainActivity : ComponentActivity() {
         pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     }
 
+    fun moveWidgetToPage(id: Int, targetPage: Int, totalPages: Int) {
+        if (targetPage !in 0 until totalPages || id !in hostedWidgetIds) return
+        val targetRows = hostedWidgetIds.filter { hostedWidgetPages[it] == targetPage && it != id }
+            .sumOf { (widgetHeightDp(it) + 99) / 100 }
+        val neededRows = (widgetHeightDp(id) + 99) / 100
+        if ((hostedWidgetPages[id] ?: 0) != targetPage && targetRows + neededRows > 7) {
+            Toast.makeText(this, "No hay espacio libre para ese widget en la página", Toast.LENGTH_SHORT).show()
+            return
+        }
+        hostedWidgetPages[id] = targetPage
+        persistWidgetState()
+    }
+
+    fun reorderWidget(id: Int, direction: Int) {
+        val current = hostedWidgetIds.indexOf(id)
+        if (current < 0) return
+        val page = hostedWidgetPages[id] ?: 0
+        val candidates = hostedWidgetIds.withIndex().filter { hostedWidgetPages[it.value] == page }.map { it.index }
+        val inPage = candidates.indexOf(current)
+        val targetPageIndex = inPage + direction
+        if (targetPageIndex !in candidates.indices) return
+        val target = candidates[targetPageIndex]
+        val moving = hostedWidgetIds.removeAt(current)
+        hostedWidgetIds.add(target.coerceAtMost(hostedWidgetIds.size), moving)
+        persistWidgetState()
+    }
+
     fun moveWidgetPages(from: Int, to: Int) {
         hostedWidgetPages.keys.toList().forEach { id ->
             val page = hostedWidgetPages[id] ?: return@forEach
