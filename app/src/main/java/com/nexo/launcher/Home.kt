@@ -212,7 +212,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
-                    editingHome && event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                    editingHome && event.toAndroidDragEvent().clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
                 },
                 target = homeDropTarget
             )
