@@ -42,6 +42,6 @@ class HomeNavigationTest {
         composeRule.onNodeWithContentDescription("Ir a la página 1, seleccionada").assertExists()
         composeRule.onNodeWithContentDescription("Ir a la página 2").performClick()
         composeRule.onNodeWithContentDescription("Ir a la página 2, seleccionada").assertExists()
-        composeRule.onAllNodesWithTag("home-page-apps-1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
     }
 }
