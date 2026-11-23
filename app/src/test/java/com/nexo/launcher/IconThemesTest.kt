@@ -21,4 +21,25 @@ class IconThemesTest {
         assertNull(themedIconResource(IconTheme.LIQUID_GLASS, "com.unknown.app"))
         assertNull(themedIconResource(IconTheme.ORIGINAL, "com.android.chrome"))
     }
+
+    @Test
+    fun everyDrivePackImageIsBundled() {
+        // Crayon has a duplicate copy of the same phone image in Drive; Liquid has one copied asset
+        // named for both CapCut and X. These totals count the packaged resource files, not distinct pixels.
+        assertEquals(18, bundledIconAssets(IconTheme.CRAYON).size)
+        assertEquals(26, bundledIconAssets(IconTheme.LIQUID_GLASS).size)
+        assertEquals(0, bundledIconAssets(IconTheme.ORIGINAL).size)
+    }
+
+    @Test
+    fun mappedArtworkBelongsToTheSelectedPack() {
+        val crayon = bundledIconAssets(IconTheme.CRAYON).toSet()
+        val liquid = bundledIconAssets(IconTheme.LIQUID_GLASS).toSet()
+        listOf("com.whatsapp", "com.spotify.music", "com.google.android.calendar", "com.android.settings").forEach { pkg ->
+            assertEquals(true, themedIconResource(IconTheme.CRAYON, pkg)?.let(crayon::contains) == true)
+        }
+        listOf("com.android.chrome", "com.google.android.apps.maps", "com.google.android.gm", "com.netflix.mediaclient").forEach { pkg ->
+            assertEquals(true, themedIconResource(IconTheme.LIQUID_GLASS, pkg)?.let(liquid::contains) == true)
+        }
+    }
 }
