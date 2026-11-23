@@ -192,7 +192,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
         val firstAppCell = occupiedWidgetCells.coerceIn(0, 28)
         while (page.size < 28) page.add("-")
-        val slot = (firstAppCell until 28).firstOrNull { page[it] == "-" }
+        val appEndCell = (28 - if (currentPage == 0) 8 else 0).coerceAtLeast(firstAppCell)
+        val slot = (firstAppCell until appEndCell).firstOrNull { page[it] == "-" }
         if (slot == null) {
             Toast.makeText(ctx, "No hay una celda libre en esta página", Toast.LENGTH_LONG).show()
             return
@@ -444,18 +445,20 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             Spacer(Modifier.height(16.dp))
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
-            val widgetRows = pageWidgetIds.sumOf { id ->
+            val nativeWidgetRows = pageWidgetIds.sumOf { id ->
                 val height = launcherActivity?.widgetHeightDp(id) ?: 132
                 ((height + 99) / 100).coerceAtLeast(1)
             }.coerceAtMost(7)
-            val widgetCellOffset = widgetRows * 4
-            homeCapacity = (28 - widgetCellOffset).coerceIn(0, 28)
-            val pageAppCellCount = if (homePackages.isEmpty() && currentPage == 0) priority.size else homePackages.count { it != "-" }
+            val quoteRows = if (currentPage == 0) 2 else 0
+            val quoteItemCount = if (quoteRows > 0) 1 else 0
+            val widgetCellOffset = nativeWidgetRows * 4
+            homeCapacity = (28 - widgetCellOffset - quoteRows * 4).coerceIn(0, 28)
+            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) priority.size else homePackages.count { it != "-" }) + quoteRows * 4
             LaunchedEffect(currentPage, widgetCellOffset, apps) {
                 if (apps.isEmpty()) return@LaunchedEffect
                 val saved = homePages.getOrNull(currentPage).orEmpty()
                 val source = if (saved.isEmpty() && currentPage == 0) priority.map { it.pkg } else saved
-                val compacted = (List(widgetCellOffset.coerceAtMost(28)) { "-" } + source.filter { it != "-" }.take((28 - widgetCellOffset).coerceAtLeast(0)))
+                val compacted = (List(widgetCellOffset.coerceAtMost(28)) { "-" } + source.filter { it != "-" }.take(homeCapacity))
                 val normalized = (compacted + List((28 - compacted.size).coerceAtLeast(0)) { "-" }).take(28)
                 if (saved != normalized) {
                     val updated = homePages.toMutableList().apply {
@@ -469,25 +472,33 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         .putString("pages", updated.joinToString("~") { it.joinToString("|") }).apply()
                 }
             }
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                userScrollEnabled = true,
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(
-                    count = pageWidgetIds.size + homeCapacity,
-                    key = { index -> if (index < pageWidgetIds.size) "widget-${pageWidgetIds[index]}" else "home-cell-${index - pageWidgetIds.size}" },
-                    span = { index -> if (index < pageWidgetIds.size) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
-                ) { itemIndex ->
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val gridGap = 8.dp
+                val cellHeight = ((maxHeight - gridGap * 6) / 7).coerceAtLeast(1.dp)
+                val quoteHeight = cellHeight * quoteRows + if (quoteRows > 0) gridGap else 0.dp
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = false,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalArrangement = Arrangement.spacedBy(gridGap)
+                ) {
+                    items(
+                        count = pageWidgetIds.size + homeCapacity + quoteItemCount,
+                        key = { index ->
+                            when {
+                                index < pageWidgetIds.size -> "widget-${pageWidgetIds[index]}"
+                                quoteItemCount > 0 && index == pageWidgetIds.size + homeCapacity -> "quote-widget-page-0"
+                                else -> "home-cell-${index - pageWidgetIds.size}"
+                            }
+                        },
+                        span = { index -> if (index < pageWidgetIds.size || (quoteItemCount > 0 && index == pageWidgetIds.size + homeCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
+                    ) { itemIndex ->
                     if (itemIndex < pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex]
                         var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
-                        val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId) ?: 132) + 99) / 100).coerceAtLeast(1) * 100
-                        Box(Modifier.fillMaxWidth().height(widgetRowsHeight.dp)) {
+                        val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId) ?: 132) + 99) / 100).coerceAtLeast(1)
+                        Box(Modifier.fillMaxWidth().height(cellHeight * widgetRowsHeight + gridGap * (widgetRowsHeight - 1))) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
                                 AndroidView(factory = { activity -> launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity) }, modifier = Modifier.fillMaxSize())
                             }
@@ -498,7 +509,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     DropdownMenu(expanded = showWidgetPageMenu, onDismissRequest = { showWidgetPageMenu = false }) {
                                         homePages.indices.forEach { destination -> DropdownMenuItem(
                                             text = { Text("Página ${destination + 1}") },
-                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) priority.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }); showWidgetPageMenu = false }
+                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) priority.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
                                         ) }
                                     }
                                 }
@@ -508,6 +519,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }) { Text("↓") }
                             }
                         }
+                    } else if (quoteItemCount > 0 && itemIndex == pageWidgetIds.size + homeCapacity) {
+                        QuoteCard(quote, photo, onClick = { editCard = true }, height = quoteHeight,
+                            modifier = Modifier.fillMaxWidth())
                     } else {
                     val index = itemIndex - pageWidgetIds.size
                     val logicalIndex = index + widgetCellOffset
@@ -523,6 +537,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onFolderEdit = { if (folderName != null) userFolders.find { it.first == folderName }?.let { folderEditor = it } },
                         index = logicalIndex,
                         editingHome = editingHome,
+                        cellHeight = cellHeight,
+                        iconSize = (cellHeight - if (cellHeight >= 48.dp) 15.dp else 4.dp).coerceIn(20.dp, 60.dp),
                         onLongPress = { editingHome = true },
                         onDoubleTapEmpty = {
                             if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
@@ -703,11 +719,12 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
                                         ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
                                     val appStart = widgetCells.coerceAtMost(28)
+                                    val appEnd = (28 - if (page == 0) 8 else 0).coerceAtLeast(appStart)
                                     if (token in dest) {
                                         currentPage = page; homePackages = dest.toList()
                                     } else {
                                         while (dest.size < 28) dest.add("-")
-                                        val free = (appStart until 28).firstOrNull { dest.getOrNull(it) == "-" }
+                                        val free = (appStart until appEnd).firstOrNull { dest.getOrNull(it) == "-" }
                                         if (free == null) Toast.makeText(ctx, "No hay una celda libre en esa página", Toast.LENGTH_SHORT).show()
                                         else {
                                             if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(token)] = "-"
@@ -730,11 +747,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(4.dp))
-            if (currentPage == 0) {
-                QuoteCard(quote, photo) { editCard = true }
-                Spacer(Modifier.height(12.dp))
-            }
-
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = Glass,
@@ -799,6 +811,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     }
                 }
             }
+            }
 
                         Spacer(Modifier.height(10.dp))
         }
@@ -831,7 +844,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
-                    val count = homePages.getOrNull(currentPage).orEmpty().count { it != "-" }
+                    val count = homePages.getOrNull(currentPage).orEmpty().count { it != "-" } + if (currentPage == 0) 8 else 0
                     editingHome = false
                     launcherActivity?.launchWidgetPicker(currentPage, count)
                 },
@@ -1049,9 +1062,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val targetPage = pages[currentPage]
         val pageWidgetArea = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
             ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
-        val pageCellLimit = (28 - pageWidgetArea).coerceAtLeast(0)
+        val quoteCellArea = if (currentPage == 0) 8 else 0
         val pageOffset = pageWidgetArea.coerceAtMost(28)
-        val visibleRange = pageOffset until 28
+        val pageCellLimit = (28 - pageOffset - quoteCellArea).coerceAtLeast(0)
+        val visibleRange = pageOffset until (28 - quoteCellArea).coerceAtLeast(pageOffset)
         val emptyRelative = targetPage.drop(pageOffset).take(pageCellLimit).indexOfFirst { it == "-" }
         val emptySlot = if (emptyRelative >= 0) pageOffset + emptyRelative else -1
         val folderSlot = when {
@@ -1284,9 +1298,15 @@ private fun HomeAppsDialog(
 }
 
 @Composable
-fun QuoteCard(text: String, photo: ImageBitmap?, onClick: () -> Unit) {
+fun QuoteCard(
+    text: String,
+    photo: ImageBitmap?,
+    onClick: () -> Unit,
+    height: Dp = 110.dp,
+    modifier: Modifier = Modifier
+) {
     Box(
-        Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(26.dp))
+        modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(26.dp))
             .background(Brush.linearGradient(listOf(Color(0xFFA89578), Color(0xFF6D5A45))))
             .clickable { onClick() }
     ) {
@@ -1377,6 +1397,7 @@ fun AppIcon(
     size: Dp,
     textColor: Color,
     showLabel: Boolean = true,
+    labelFontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
     onLaunch: () -> Unit = {},
     onLongPress: (() -> Unit)? = null,
     onContextMenu: (() -> Unit)? = null,
@@ -1420,7 +1441,7 @@ fun AppIcon(
             Text(
                 app.label,
                 color = textColor,
-                fontSize = 11.sp,
+                fontSize = labelFontSize,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -1702,6 +1723,8 @@ private fun HomeAppCell(
     onFolderEdit: () -> Unit = {},
     index: Int,
     editingHome: Boolean,
+    cellHeight: Dp,
+    iconSize: Dp,
     onLongPress: () -> Unit,
     onDoubleTapEmpty: () -> Unit = {},
     onRemove: (String) -> Unit,
@@ -1723,7 +1746,7 @@ private fun HomeAppCell(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(90.dp)
+            .height(cellHeight)
             .then(
                 if (app == null && folderName == null) {
                     Modifier.pointerInput(index) {
@@ -1741,7 +1764,13 @@ private fun HomeAppCell(
         contentAlignment = Alignment.Center
     ) {
         if (app != null) {
-            AppIcon(app, 60.dp, Color.White, onLongPress = onLongPress, dragPayload = "home:${app.pkg}")
+            AppIcon(
+                app, iconSize, Color.White,
+                showLabel = cellHeight >= 48.dp,
+                labelFontSize = if (cellHeight < 58.dp) 8.sp else 10.sp,
+                onLongPress = onLongPress,
+                dragPayload = "home:${app.pkg}"
+            )
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove(app.pkg) }) {
@@ -1749,7 +1778,7 @@ private fun HomeAppCell(
                 }
             }
         } else if (folderName != null) {
-            FolderIcon(folderName, folderApps, 56.dp, onFolderClick, dragPayload = "folder:$folderName")
+            FolderIcon(folderName, folderApps, iconSize, onFolderClick, dragPayload = "folder:$folderName")
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove("folder:$folderName") }) {
