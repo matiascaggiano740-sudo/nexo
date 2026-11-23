@@ -215,12 +215,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
     }
 
-    val homeSlots: List<AppItem?> = if (homePackages.isEmpty() && currentPage == 0) {
-        priority
+    val homeSlots: List<String?> = if (homePackages.isEmpty() && currentPage == 0) {
+        priority.map { it.pkg }
     } else {
-        homePackages.map { pkg ->
-            apps.firstOrNull { it.pkg == pkg }
-        }
+        homePackages.map { it.takeIf { value -> value != "-" } }
     }
 
     val folders = FOLDERS.mapNotNull { (name, pkgs) ->
@@ -351,9 +349,16 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         }
                     } else {
                     val index = itemIndex - pageWidgetIds.size
-                    val app = homeSlots.getOrNull(index)
+                    val slot = homeSlots.getOrNull(index)
+                    val folderName = slot?.takeIf { it.startsWith("folder:") }?.removePrefix("folder:")
+                    val folderApps = folderName?.let { name -> userFolders.find { it.first == name }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } } }.orEmpty()
+                    val app = slot?.takeUnless { it.startsWith("folder:") }?.let { pkg -> apps.find { it.pkg == pkg } }
                     HomeAppCell(
                         app = app,
+                        folderName = folderName,
+                        folderApps = folderApps,
+                        onFolderClick = { if (folderName != null) openFolder = "user:$folderName" },
+                        onFolderEdit = { if (folderName != null) userFolders.find { it.first == folderName }?.let { folderEditor = it } },
                         index = index,
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
@@ -383,29 +388,49 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
                                 val sourcePage = pages.indexOfFirst { it.contains(draggedPkg) }
                                 var canApplyDrop = true
-                                if (sourcePage == currentPage) {
+                                val target = dest[targetIndex]
+                                if (target == draggedPkg) {
+                                    canApplyDrop = false
+                                } else if (target?.startsWith("folder:") == true) {
+                                    val folderName = target.removePrefix("folder:")
+                                    val oldFolder = userFolders.find { it.first == folderName }
+                                    if (oldFolder != null && draggedPkg !in oldFolder.second) {
+                                        val updatedFolders = userFolders.map { if (it.first == folderName) it.first to (it.second + draggedPkg) else it }
+                                        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
+                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
+                                    }
+                                } else if (target != null && target != "-") {
+                                    val existingApp = apps.firstOrNull { it.pkg == target }
+                                    val draggedApp = apps.firstOrNull { it.pkg == draggedPkg }
+                                    if (existingApp != null && draggedApp != null) {
+                                        var folderName = "Carpeta"
+                                        var suffix = 1
+                                        while (userFolders.any { it.first == folderName }) { folderName = "Carpeta $suffix"; suffix++ }
+                                        val updatedFolders = userFolders + (folderName to listOf(existingApp.pkg, draggedApp.pkg).distinct())
+                                        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
+                                        dest[targetIndex] = "folder:$folderName"
+                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
+                                    }
+                                } else if (sourcePage == currentPage) {
                                     val sourceIndex = dest.indexOf(draggedPkg)
                                     if (sourceIndex >= 0) {
                                         val displaced = dest[targetIndex]
                                         dest[targetIndex] = draggedPkg
-                                        dest[sourceIndex] = displaced
+                                        dest[sourceIndex] = displaced ?: "-"
                                     }
+                                } else if (sourcePage >= 0) {
+                                    val sourceSlots = pages[sourcePage]
+                                    val sourceIndex = sourceSlots.indexOf(draggedPkg)
+                                    sourceSlots[sourceIndex] = "-"
+                                    dest[targetIndex] = draggedPkg
                                 } else {
-                                    val displaced = dest[targetIndex]
-                                    if (sourcePage >= 0) {
-                                        val sourceSlots = pages[sourcePage]
-                                        val sourceIndex = sourceSlots.indexOf(draggedPkg)
-                                        sourceSlots[sourceIndex] = if (displaced == "-") "-" else displaced
-                                        dest[targetIndex] = draggedPkg
+                                    val emptyIndex = dest.indexOfFirst { it == "-" }
+                                    if (emptyIndex < 0) {
+                                        Toast.makeText(ctx, "No hay espacio libre en esta página", Toast.LENGTH_SHORT).show()
+                                        canApplyDrop = false
                                     } else {
-                                        val emptyIndex = dest.indexOfFirst { it == "-" }
-                                        if (emptyIndex < 0) {
-                                            Toast.makeText(ctx, "No hay espacio libre en esta página", Toast.LENGTH_SHORT).show()
-                                            canApplyDrop = false
-                                        } else {
-                                            for (i in emptyIndex downTo targetIndex + 1) dest[i] = dest[i - 1]
-                                            dest[targetIndex] = draggedPkg
-                                        }
+                                        for (i in emptyIndex downTo targetIndex + 1) dest[i] = dest[i - 1]
+                                        dest[targetIndex] = draggedPkg
                                     }
                                 }
 
@@ -467,18 +492,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     folders.forEach { (name, list) -> FolderIcon(name, list, 56.dp) { openFolder = name } }
                 }
             }
-            if (userFolders.isNotEmpty() || editingHome) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    userFolders.forEach { (name, packages) ->
-                        val content = packages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            FolderIcon(name, content, 54.dp) { openFolder = "user:$name" }
-                            if (editingHome) TextButton(onClick = { folderEditor = name to packages }) { Text("Editar", color = Color.White, fontSize = 10.sp) }
-                        }
-                    }
-                    if (editingHome) TextButton(onClick = { showNewFolder = true }) { Text("＋ Carpeta", color = Color.White) }
-                }
+            if (editingHome) TextButton(onClick = { showNewFolder = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text("＋ Carpeta", color = Color.White)
             }
             Spacer(Modifier.height(4.dp))
             QuoteCard(quote, photo) { editCard = true }
@@ -522,7 +537,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 val key = name.removePrefix("user:")
                 userFolders.find { it.first == key }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } }
             } else folders.find { it.first == name }?.second.orEmpty()
-            FolderPanel(name.removePrefix("user:"), contents) { openFolder = null }
+            val userFolderName = name.removePrefix("user:").takeIf { name.startsWith("user:") }
+            FolderPanel(name.removePrefix("user:"), contents, close = { openFolder = null }, onEdit = {
+                userFolderName?.let { folderName -> userFolders.find { it.first == folderName }?.let { folderEditor = it } }
+                openFolder = null
+            })
         }
     }
     if (editCity) {
@@ -545,15 +564,37 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         )
     }
     if (showNewFolder) UserFolderDialog(apps, null, onDismiss = { showNewFolder = false }, onSave = { name, packages ->
-        val updated = userFolders.filterNot { it.first == name } + (name to packages)
-        userFolders = updated; writeUserFolders(ctx, updated); showNewFolder = false
+        val pages = homePages.map { it.toMutableList() }.toMutableList()
+        while (pages.size <= currentPage) pages.add(mutableListOf())
+        val page = pages[currentPage]
+        if (page.isEmpty() && currentPage == 0) page.addAll(priority.map { it.pkg })
+        val pageWidgetRows = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
+            ?.sumOf { id -> (launcherActivity.widgetHeightDp(id) + 99) / 100 } ?: 0
+        val occupied = page.count { it != "-" } + pageWidgetRows * 4
+        val empty = page.indexOfFirst { it == "-" }
+        if (empty >= 0 && occupied < 28) page[empty] = "folder:$name"
+        else if (page.size + pageWidgetRows * 4 < 28) page.add("folder:$name")
+        else Toast.makeText(ctx, "No hay una celda libre para la carpeta", Toast.LENGTH_SHORT).show()
+        val updatedFolders = userFolders.filterNot { it.first == name } + (name to packages)
+        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
+        homePages = pages.map { it.toList() }; homePackages = page.toList()
+        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
+        showNewFolder = false
     })
     folderEditor?.let { existing -> UserFolderDialog(apps, existing, onDismiss = { folderEditor = null }, onSave = { name, packages ->
         val updated = userFolders.filterNot { it.first == existing.first || it.first == name } + (name to packages)
-        userFolders = updated; writeUserFolders(ctx, updated); folderEditor = null
+        userFolders = updated; writeUserFolders(ctx, updated)
+        val renamedPages = homePages.map { page -> page.map { if (it == "folder:${existing.first}") "folder:$name" else it } }
+        homePages = renamedPages; homePackages = renamedPages.getOrNull(currentPage).orEmpty()
+        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", renamedPages.joinToString("~") { it.joinToString("|") }).putString("packages", renamedPages.firstOrNull().orEmpty().joinToString("|")).apply()
+        folderEditor = null
     }, onDelete = {
         val updated = userFolders.filterNot { it.first == existing.first }
-        userFolders = updated; writeUserFolders(ctx, updated); folderEditor = null
+        userFolders = updated; writeUserFolders(ctx, updated)
+        val changedPages = homePages.map { page -> page.map { if (it == "folder:${existing.first}") "-" else it } }
+        homePages = changedPages; homePackages = changedPages.getOrNull(currentPage).orEmpty()
+        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", changedPages.joinToString("~") { it.joinToString("|") }).putString("packages", changedPages.firstOrNull().orEmpty().joinToString("|")).apply()
+        folderEditor = null
     }) }
     if (showPageManager) PageManagerDialog(homePages, currentPage, launcherActivity?.hostedWidgetPages?.values?.toSet().orEmpty(),
         onDismiss = { showPageManager = false },
@@ -755,7 +796,7 @@ fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit)
 }
 
 @Composable
-fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
+fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit, onEdit: (() -> Unit)? = null) {
     Box(
         Modifier.fillMaxSize().background(Color(0x99201810)).pointerInput(Unit) { detectTapGestures { close() } },
         contentAlignment = Alignment.Center,
@@ -764,7 +805,10 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
             Modifier.padding(horizontal = 28.dp).clip(RoundedCornerShape(32.dp)).background(Cream.copy(alpha = 0.95f))
                 .pointerInput(Unit) { detectTapGestures { } }.padding(22.dp)
         ) {
-            Text(name, color = Brown, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(name, color = Brown, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                if (onEdit != null) TextButton(onClick = onEdit) { Text("Editar") }
+            }
             Spacer(Modifier.height(18.dp))
                         Column(
                 Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
@@ -853,6 +897,10 @@ fun AppIcon(
 @Composable
 private fun HomeAppCell(
     app: AppItem?,
+    folderName: String? = null,
+    folderApps: List<AppItem> = emptyList(),
+    onFolderClick: () -> Unit = {},
+    onFolderEdit: () -> Unit = {},
     index: Int,
     editingHome: Boolean,
     onLongPress: () -> Unit,
@@ -893,17 +941,22 @@ private fun HomeAppCell(
         contentAlignment = Alignment.Center
     ) {
         if (app != null) {
-            AppIcon(
-                app,
-                60.dp,
-                Color.White,
-                onLongPress = onLongPress,
-                dragPayload = app.pkg
-            )
+            AppIcon(app, 60.dp, Color.White, onLongPress = onLongPress, dragPayload = app.pkg)
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove(app.pkg) }) {
                     Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 16.sp, lineHeight = 16.sp) }
+                }
+            }
+        } else if (folderName != null) {
+            FolderIcon(folderName, folderApps, 56.dp, onFolderClick)
+            if (editingHome) {
+                Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove("folder:$folderName") }) {
+                    Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 16.sp, lineHeight = 16.sp) }
+                }
+                TextButton(onClick = onFolderEdit, modifier = Modifier.align(Alignment.BottomCenter)) {
+                    Text("Editar", color = Color.White, fontSize = 9.sp)
                 }
             }
         }
