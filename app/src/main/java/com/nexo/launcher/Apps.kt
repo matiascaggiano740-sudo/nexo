@@ -11,10 +11,9 @@ import androidx.core.graphics.drawable.toBitmap
 
 data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap, val intent: Intent, val category: Int = ApplicationInfo.CATEGORY_UNDEFINED, val usesThemeAsset: Boolean = false)
 
-fun loadApps(ctx: Context): List<AppItem> {
+fun loadApps(ctx: Context, theme: IconTheme = savedIconTheme(ctx)): List<AppItem> {
     val pm = ctx.packageManager
     val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-    val theme = savedIconTheme(ctx)
     return pm.queryIntentActivities(main, 0)
         .asSequence()
         .filter { it.activityInfo.packageName != ctx.packageName }
@@ -33,9 +32,8 @@ fun loadApps(ctx: Context): List<AppItem> {
 }
 
 /** Teléfono, Mensajes y Cámara: las apps predeterminadas del sistema. */
-fun loadSystemDock(ctx: Context): List<AppItem> {
+fun loadSystemDock(ctx: Context, theme: IconTheme = savedIconTheme(ctx)): List<AppItem> {
     val pm = ctx.packageManager
-    val theme = savedIconTheme(ctx)
     val intents = listOf(
         Intent(Intent.ACTION_DIAL),
         Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING),

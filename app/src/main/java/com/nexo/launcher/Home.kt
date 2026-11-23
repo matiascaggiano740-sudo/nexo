@@ -264,10 +264,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }.onFailure { Toast.makeText(ctx, it.message ?: "El archivo no es un respaldo válido", Toast.LENGTH_LONG).show() }
         }
     }
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val list = loadApps(ctx)
-            val sys = loadSystemDock(ctx)
+    LaunchedEffect(iconTheme) {
+        val requestedTheme = iconTheme
+        val loaded = withContext(Dispatchers.IO) {
+            val list = loadApps(ctx, requestedTheme)
+            val sys = loadSystemDock(ctx, requestedTheme)
             val msgs = list.firstOrNull { it.pkg in MESSAGES } ?: sys.getOrNull(1)
             val chrome = list.find { it.pkg == "com.android.chrome" }
             val defaultDock = listOfNotNull(sys.getOrNull(0), msgs, chrome, sys.getOrNull(2)).map { it.pkg }
@@ -275,9 +276,12 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ?.takeIf { it.isNotBlank() }?.split("|")
             val selectedDock = (savedDock ?: defaultDock).take(4).toMutableList()
             while (selectedDock.size < 4) selectedDock.add("-")
-            dockPackages = selectedDock
-            dock = selectedDock.mapNotNull { pkg -> list.find { it.pkg == pkg } }
-            apps = list
+            list to selectedDock
+        }
+        if (iconTheme == requestedTheme) {
+            apps = loaded.first
+            dockPackages = loaded.second
+            dock = loaded.second.mapNotNull { pkg -> loaded.first.find { it.pkg == pkg } }
         }
     }
     val packageRefreshScope = rememberCoroutineScope()
@@ -292,8 +296,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             override fun onReceive(context: android.content.Context?, intent: Intent?) {
                 val changedPackage = intent?.data?.schemeSpecificPart
                 val removed = intent?.let { it.action == Intent.ACTION_PACKAGE_REMOVED && !it.getBooleanExtra(Intent.EXTRA_REPLACING, false) } == true
+                val requestedTheme = savedIconTheme(ctx)
                 packageRefreshScope.launch {
-                    val latest = withContext(Dispatchers.IO) { loadApps(ctx) }
+                    val latest = withContext(Dispatchers.IO) { loadApps(ctx, requestedTheme) }
+                    if (savedIconTheme(ctx) != requestedTheme) return@launch
                     apps = latest
                     dock = dockPackages.mapNotNull { pkg -> latest.find { it.pkg == pkg } }
                     if (removed && changedPackage != null) {
@@ -500,11 +506,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         )
                     } else if (itemIndex <= pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex - 1]
+                        val widgetHostView = remember(widgetId) { launcherActivity?.createWidgetHostView(widgetId) }
                         var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
                         val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId) ?: 132) + 99) / 100).coerceAtLeast(1)
                         Box(Modifier.fillMaxWidth().height(cellHeight * widgetRowsHeight + gridGap * (widgetRowsHeight - 1))) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
-                                AndroidView(factory = { activity -> launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity) }, modifier = Modifier.fillMaxSize())
+                                if (widgetHostView != null) {
+                                    AndroidView(factory = { widgetHostView }, modifier = Modifier.fillMaxSize())
+                                } else {
+                                    Box(Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) {
+                                        Text("No se pudo mostrar este widget. Quitalo y volvé a agregarlo.", color = Color(0xFF4A433A), textAlign = TextAlign.Center)
+                                    }
+                                }
                             }
                             if (editingHome) Row(Modifier.align(Alignment.TopEnd).background(Color.White.copy(alpha = 0.88f), RoundedCornerShape(20.dp))) {
                                 TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, -1) }) { Text("↑") }
@@ -695,6 +708,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             HomeEditAction("Más", onClick = { showHomeMoreActions = true })
                             DropdownMenu(expanded = showHomeMoreActions, onDismissRequest = { showHomeMoreActions = false }) {
                                 DropdownMenuItem(text = { Text("Administrar páginas") }, onClick = { showHomeMoreActions = false; showPageManager = true })
+                                DropdownMenuItem(text = { Text("Opciones de inicio de Android") }, onClick = {
+                                    showHomeMoreActions = false
+                                    runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_HOME_SETTINGS)) }
+                                        .onFailure { Toast.makeText(ctx, "No se pudieron abrir las opciones de inicio de Android", Toast.LENGTH_LONG).show() }
+                                })
                                 DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
                                 DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
                             }
@@ -918,25 +936,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 Row(Modifier.fillMaxWidth().clickable {
                     showIconThemeDialog = false
                     if (option != iconTheme) {
-                        iconTheme = option
                         ctx.getSharedPreferences("nexo_icon_settings", 0).edit().putString("theme", option.key).apply()
-                        packageRefreshScope.launch {
-                            val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
-                            apps = refreshed
-                            dock = dockPackages.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
-                        }
+                        iconTheme = option
                     }
                 }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = iconTheme == option, onClick = {
                         showIconThemeDialog = false
                         if (option != iconTheme) {
-                            iconTheme = option
                             ctx.getSharedPreferences("nexo_icon_settings", 0).edit().putString("theme", option.key).apply()
-                            packageRefreshScope.launch {
-                                val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
-                                apps = refreshed
-                                dock = dockPackages.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
-                            }
+                            iconTheme = option
                         }
                     })
                     Text(option.title, modifier = Modifier.padding(start = 8.dp))

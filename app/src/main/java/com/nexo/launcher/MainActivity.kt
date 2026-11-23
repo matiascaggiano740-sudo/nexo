@@ -31,6 +31,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedInstanceState?.let { state ->
+            pendingWidgetId = state.getInt(STATE_PENDING_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            pendingWidgetPage = state.getInt(STATE_PENDING_WIDGET_PAGE, 0)
+            pendingWidgetAppCells = state.getInt(STATE_PENDING_WIDGET_APP_CELLS, 0)
+        }
         enableEdgeToEdge()
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
@@ -142,6 +147,9 @@ class MainActivity : ComponentActivity() {
         if (resultCode != Activity.RESULT_OK || id == AppWidgetManager.INVALID_APPWIDGET_ID) {
             if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) widgetHost.deleteAppWidgetId(pendingWidgetId)
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            if (requestCode == REQUEST_CONFIGURE && resultCode != Activity.RESULT_OK) {
+                Toast.makeText(this, "No se agregó el widget porque se canceló su configuración", Toast.LENGTH_SHORT).show()
+            }
             return
         }
         when (requestCode) {
@@ -157,12 +165,23 @@ class MainActivity : ComponentActivity() {
         else runCatching {
             startActivityForResult(Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).setComponent(configure)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id), REQUEST_CONFIGURE)
-        }.onFailure { persistWidget(id) }
+        }.onFailure {
+            widgetHost.deleteAppWidgetId(id)
+            pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            Toast.makeText(this, "No se pudo abrir la configuración. El widget no se agregó", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun persistWidget(id: Int) {
         val page = pendingWidgetPage
-        val addedRows = ((AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight ?: 132) + 99) / 100
+        val widgetInfo = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)
+        if (widgetInfo == null) {
+            widgetHost.deleteAppWidgetId(id)
+            pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            Toast.makeText(this, "Android ya no encuentra ese widget; elegí otro", Toast.LENGTH_LONG).show()
+            return
+        }
+        val addedRows = ((widgetInfo.minHeight.coerceAtLeast(96) + 99) / 100)
         val existingRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page }
             .sumOf { widgetHeightDp(it).let { height -> (height + 99) / 100 } }
         if ((existingRows + addedRows) * 4 + pendingWidgetAppCells > 28) {
@@ -338,6 +357,13 @@ class MainActivity : ComponentActivity() {
         widgetHost.createView(this, id, info).apply { setAppWidget(id, info) }
     }.getOrNull()
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt(STATE_PENDING_WIDGET_ID, pendingWidgetId)
+        outState.putInt(STATE_PENDING_WIDGET_PAGE, pendingWidgetPage)
+        outState.putInt(STATE_PENDING_WIDGET_APP_CELLS, pendingWidgetAppCells)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
     }
@@ -346,5 +372,8 @@ class MainActivity : ComponentActivity() {
         private const val HOST_ID = 0x4E45584F
         private const val REQUEST_BIND = 4102
         private const val REQUEST_CONFIGURE = 4103
+        private const val STATE_PENDING_WIDGET_ID = "nexo.pendingWidgetId"
+        private const val STATE_PENDING_WIDGET_PAGE = "nexo.pendingWidgetPage"
+        private const val STATE_PENDING_WIDGET_APP_CELLS = "nexo.pendingWidgetAppCells"
     }
 }
