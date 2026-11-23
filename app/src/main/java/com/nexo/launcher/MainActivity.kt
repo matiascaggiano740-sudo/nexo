@@ -84,19 +84,42 @@ class MainActivity : ComponentActivity() {
     private fun persistWidget(id: Int) {
         if (id !in hostedWidgetIds) hostedWidgetIds.add(id)
         hostedWidgetPages[id] = pendingWidgetPage
+        persistWidgetState()
+        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+    }
+
+    fun moveWidgetPages(from: Int, to: Int) {
+        hostedWidgetPages.keys.toList().forEach { id ->
+            val page = hostedWidgetPages[id] ?: return@forEach
+            hostedWidgetPages[id] = when {
+                page == from -> to
+                from < to && page in (from + 1)..to -> page - 1
+                from > to && page in to until from -> page + 1
+                else -> page
+            }
+        }
+        persistWidgetState()
+    }
+
+    fun deleteWidgetPage(page: Int) {
+        hostedWidgetPages.keys.toList().forEach { id ->
+            val old = hostedWidgetPages[id] ?: return@forEach
+            if (old > page) hostedWidgetPages[id] = old - 1
+        }
+        persistWidgetState()
+    }
+
+    private fun persistWidgetState() {
         getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit()
             .putString("ids", hostedWidgetIds.joinToString(","))
             .putString("pages", hostedWidgetPages.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
-        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     }
 
     fun removeWidget(id: Int) {
         hostedWidgetIds.remove(id)
         hostedWidgetPages.remove(id)
         widgetHost.deleteAppWidgetId(id)
-        getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit()
-            .putString("ids", hostedWidgetIds.joinToString(","))
-            .putString("pages", hostedWidgetPages.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
+        persistWidgetState()
     }
 
     fun widgetHeightDp(id: Int): Int = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)

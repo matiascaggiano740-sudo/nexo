@@ -75,6 +75,8 @@ import kotlinx.coroutines.sync.withPermit
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Cream = Color(0xFFF3EEE4)
 private val Brown = Color(0xFF3A342C)
@@ -110,6 +112,26 @@ private val FOLDERS = listOf(
     ),
 )
 
+private fun readUserFolders(ctx: android.content.Context): List<Pair<String, List<String>>> = runCatching {
+    val raw = ctx.getSharedPreferences("nexo_home", 0).getString("user_folders", "[]") ?: "[]"
+    val array = JSONArray(raw)
+    (0 until array.length()).mapNotNull { i ->
+        val obj = array.optJSONObject(i) ?: return@mapNotNull null
+        val name = obj.optString("name").trim()
+        val pkgs = obj.optJSONArray("packages") ?: JSONArray()
+        val values = (0 until pkgs.length()).mapNotNull { pkgs.optString(it).takeIf(String::isNotBlank) }
+        if (name.isBlank() || values.isEmpty()) null else name to values
+    }
+}.getOrDefault(emptyList())
+
+private fun writeUserFolders(ctx: android.content.Context, folders: List<Pair<String, List<String>>>) {
+    val array = JSONArray()
+    folders.forEach { (name, packages) ->
+        array.put(JSONObject().put("name", name).put("packages", JSONArray(packages)))
+    }
+    ctx.getSharedPreferences("nexo_home", 0).edit().putString("user_folders", array.toString()).apply()
+}
+
 @Composable
 fun Home() {
     val ctx = LocalContext.current
@@ -130,6 +152,10 @@ fun Home() {
         mutableStateOf(savedPages ?: listOf(homePackages))
     }
     var currentPage by remember { mutableIntStateOf(0) }
+    var userFolders by remember { mutableStateOf(readUserFolders(ctx)) }
+    var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
+    var showNewFolder by remember { mutableStateOf(false) }
+    var showPageManager by remember { mutableStateOf(false) }
     var homeCapacity by remember { mutableIntStateOf(0) }
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
     var drawer by remember { mutableStateOf(false) }
@@ -393,6 +419,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             Text(if (currentPage == page) "●" else "○", color = Color.White, fontSize = 12.sp)
                         }
                     }
+                    if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
                     if (editingHome && currentPage > 0 && homePackages.isEmpty()) TextButton(onClick = {
                         val reduced = homePages.toMutableList().also { it.removeAt(currentPage) }
@@ -406,13 +433,21 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             if (folders.isNotEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    folders.forEach { (name, list) ->
-                        FolderIcon(name, list, 60.dp) { openFolder = name }
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    folders.forEach { (name, list) -> FolderIcon(name, list, 56.dp) { openFolder = name } }
+                }
+            }
+            if (userFolders.isNotEmpty() || editingHome) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    userFolders.take(4).forEach { (name, packages) ->
+                        val content = packages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            FolderIcon(name, content, 54.dp) { openFolder = "user:$name" }
+                            if (editingHome) TextButton(onClick = { folderEditor = name to packages }) { Text("Editar", color = Color.White, fontSize = 10.sp) }
+                        }
                     }
+                    if (editingHome) TextButton(onClick = { showNewFolder = true }) { Text("＋ Carpeta", color = Color.White) }
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -453,7 +488,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Drawer(apps, editingHome) { drawer = false }
         }
         openFolder?.let { name ->
-            folders.find { it.first == name }?.let { FolderPanel(name, it.second) { openFolder = null } }
+            val contents = if (name.startsWith("user:")) {
+                val key = name.removePrefix("user:")
+                userFolders.find { it.first == key }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+            } else folders.find { it.first == name }?.second.orEmpty()
+            FolderPanel(name.removePrefix("user:"), contents) { openFolder = null }
         }
     }
     if (editCity) {
@@ -469,24 +508,99 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     if (editCard) {
         var t by remember { mutableStateOf(quote) }
         AlertDialog(
-            onDismissRequest = { editCard = false },
-            title = { Text("Tu tarjeta") },
-            text = {
-                Column {
-                    OutlinedTextField(t, { t = it.take(80) }, label = { Text("Frase") }, modifier = Modifier.fillMaxWidth())
-                    TextButton({ picker.launch(arrayOf("image/*")) }) { Text("Elegir foto de la galería") }
-                }
-            },
-            confirmButton = {
-                TextButton({
-                    val v = t.trim().ifBlank { DEFAULT_QUOTE }
-                    saveQuote(ctx, v); quote = v; editCard = false
-                }) { Text("Guardar") }
-            },
+            onDismissRequest = { editCard = false }, title = { Text("Tu tarjeta") },
+            text = { Column { OutlinedTextField(t, { t = it.take(80) }, label = { Text("Frase") }, modifier = Modifier.fillMaxWidth()); TextButton({ picker.launch(arrayOf("image/*")) }) { Text("Elegir foto de la galería") } } },
+            confirmButton = { TextButton({ val v = t.trim().ifBlank { DEFAULT_QUOTE }; saveQuote(ctx, v); quote = v; editCard = false }) { Text("Guardar") } },
             dismissButton = { TextButton({ editCard = false }) { Text("Cancelar") } },
         )
     }
+    if (showNewFolder) UserFolderDialog(apps, null, onDismiss = { showNewFolder = false }, onSave = { name, packages ->
+        val updated = userFolders.filterNot { it.first == name } + (name to packages)
+        userFolders = updated; writeUserFolders(ctx, updated); showNewFolder = false
+    })
+    folderEditor?.let { existing -> UserFolderDialog(apps, existing, onDismiss = { folderEditor = null }, onSave = { name, packages ->
+        val updated = userFolders.filterNot { it.first == existing.first || it.first == name } + (name to packages)
+        userFolders = updated; writeUserFolders(ctx, updated); folderEditor = null
+    }, onDelete = {
+        val updated = userFolders.filterNot { it.first == existing.first }
+        userFolders = updated; writeUserFolders(ctx, updated); folderEditor = null
+    }) }
+    if (showPageManager) PageManagerDialog(homePages, currentPage,
+        onDismiss = { showPageManager = false },
+        onSelect = { currentPage = it; homePackages = homePages.getOrNull(it).orEmpty(); showPageManager = false },
+        onMove = { from, to ->
+            if (from in homePages.indices && to in homePages.indices) {
+                val oldCurrent = currentPage
+                val mutable = homePages.toMutableList(); val item = mutable.removeAt(from); mutable.add(to, item)
+                currentPage = when {
+                    oldCurrent == from -> to
+                    from < to && oldCurrent in (from + 1)..to -> oldCurrent - 1
+                    from > to && oldCurrent in to until from -> oldCurrent + 1
+                    else -> oldCurrent
+                }
+                homePages = mutable; homePackages = mutable[currentPage]
+                launcherActivity?.moveWidgetPages(from, to)
+                ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", mutable.joinToString("~") { it.joinToString("|") }).putString("packages", mutable.firstOrNull().orEmpty().joinToString("|")).apply()
+            }
+        },
+        onDelete = { index ->
+            if (index in homePages.indices && homePages[index].all { it == "-" } && (launcherActivity?.hostedWidgetPages?.values?.none { it == index } ?: true)) {
+                val mutable = homePages.toMutableList().also { it.removeAt(index) }.ifEmpty { mutableListOf(emptyList()) }
+                homePages = mutable; currentPage = currentPage.coerceAtMost(mutable.lastIndex); homePackages = mutable[currentPage]
+                launcherActivity?.deleteWidgetPage(index)
+                ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", mutable.joinToString("~") { it.joinToString("|") }).putString("packages", mutable.firstOrNull().orEmpty().joinToString("|")).apply()
+            }
+        })
 }
+@Composable
+private fun UserFolderDialog(
+    apps: List<AppItem>, existing: Pair<String, List<String>>?, onDismiss: () -> Unit,
+    onSave: (String, List<String>) -> Unit, onDelete: (() -> Unit)? = null
+) {
+    var name by remember(existing) { mutableStateOf(existing?.first.orEmpty()) }
+    val selected = remember(existing) { mutableStateListOf<String>().apply { addAll(existing?.second.orEmpty()) } }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Nueva carpeta" else "Editar carpeta") },
+        text = { Column {
+            OutlinedTextField(name, { name = it.take(24) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                apps.sortedBy { it.label.lowercase() }.forEach { app ->
+                    Row(Modifier.fillMaxWidth().clickable { if (app.pkg in selected) selected.remove(app.pkg) else selected.add(app.pkg) }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(app.pkg in selected, { checked -> if (checked) { if (app.pkg !in selected) selected.add(app.pkg) } else selected.remove(app.pkg) })
+                        Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        } },
+        confirmButton = { TextButton(enabled = name.isNotBlank() && selected.isNotEmpty(), onClick = { onSave(name.trim(), selected.toList()) }) { Text("Guardar") } },
+        dismissButton = { Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onDelete != null) TextButton(onClick = onDelete) { Text("Borrar", color = Color(0xFFB3261E)) }
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        } })
+}
+
+@Composable
+private fun PageManagerDialog(
+    pages: List<List<String>>, current: Int, onDismiss: () -> Unit, onSelect: (Int) -> Unit,
+    onMove: (Int, Int) -> Unit, onDelete: (Int) -> Unit
+) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Páginas de inicio") },
+        text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+            pages.forEachIndexed { index, page ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { onSelect(index) }, modifier = Modifier.weight(1f)) {
+                        Text("Página ${index + 1}${if (index == current) " · actual" else ""} · ${page.count { it != "-" }} apps", maxLines = 1)
+                    }
+                    TextButton(enabled = index > 0, onClick = { onMove(index, index - 1) }) { Text("↑") }
+                    TextButton(enabled = index < pages.lastIndex, onClick = { onMove(index, index + 1) }) { Text("↓") }
+                    TextButton(enabled = index > 0 && page.all { it == "-" }, onClick = { onDelete(index) }) { Text("×") }
+                }
+            }
+            Text("Solo se pueden borrar páginas vacías.", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Listo") } })
+}
+
 @Composable
 private fun HomeAppsDialog(
     apps: List<AppItem>,
