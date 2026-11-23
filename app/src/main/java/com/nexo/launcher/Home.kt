@@ -183,22 +183,38 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(16.dp))
-                                                priority.chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                                            priority.chunked(3).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
                     row.forEach { app ->
-                        AppIcon(app, 60.dp, Color.White, onLongPress = { editingHome = true })
+                        AppIcon(
+                            app,
+                            60.dp,
+                            Color.White,
+                            onLongPress = { editingHome = true }
+                        )
                     }
                 }
-                                                }
+            }
+
             if (folders.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    folders.forEach { (name, list) -> FolderIcon(name, list, 60.dp) { openFolder = name } }
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    folders.forEach { (name, list) ->
+                        FolderIcon(name, list, 60.dp) { openFolder = name }
+                    }
                 }
             }
+
             Spacer(Modifier.height(4.dp))
             QuoteCard(quote, photo) { editCard = true }
             Spacer(Modifier.height(12.dp))
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
@@ -208,7 +224,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
                     }
                 }
+
                 Spacer(Modifier.width(8.dp))
+
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
@@ -216,9 +234,27 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(if (editingHome) "✓" else "⋮", color = Color.White, fontSize = 25.sp)
+                    }
                 }
-                        }
-                        }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Surface(
+                color = Glass,
+                shape = RoundedCornerShape(32.dp),
+                modifier = Modifier.fillMaxWidth().height(76.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    dock.forEach { AppIcon(it, 52.dp, Color.White, showLabel = false) }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
                             Spacer(Modifier.height(10.dp))
             Surface(color = Glass, shape = RoundedCornerShape(32.dp), modifier = Modifier.fillMaxWidth().height(76.dp)) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
