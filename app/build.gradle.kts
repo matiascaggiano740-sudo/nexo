@@ -10,7 +10,8 @@ android {
         applicationId = "com.nexo.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1) + 100
+
         versionName = "0.1"
     }
     compileOptions {
