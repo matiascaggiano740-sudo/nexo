@@ -30,7 +30,7 @@ fun loadCardPhoto(ctx: Context): ImageBitmap? {
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
         ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }?.asImageBitmap()
     }.getOrNull() }
-    fromUri ?: p.getString("photo_backup_b64", null)?.let { encoded -> runCatching {
+    return fromUri ?: p.getString("photo_backup_b64", null)?.let { encoded -> runCatching {
         val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
     }.getOrNull() }

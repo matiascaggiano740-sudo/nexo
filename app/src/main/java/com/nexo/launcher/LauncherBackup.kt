@@ -2,6 +2,7 @@ package com.nexo.launcher
 
 import android.content.Context
 import android.appwidget.AppWidgetManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
