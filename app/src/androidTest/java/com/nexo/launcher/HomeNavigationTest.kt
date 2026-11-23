@@ -39,4 +39,12 @@ class HomeNavigationTest {
         composeRule.onAllNodesWithTag("home-page-indicator-selected-1").assertCountEquals(1)
         composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
     }
+
+    @Test
+    fun iconPackSelectionIsReachableFromHomeEdit() {
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("icon-theme-open").performClick()
+        composeRule.onNodeWithTag("icon-theme-option-liquid").performClick()
+        composeRule.onNodeWithTag("home-clock").assertExists()
+    }
 }
