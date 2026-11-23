@@ -118,8 +118,7 @@ fun Home() {
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
         var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
-            var editingHome by remember { mutableStateOf(false) }
-        var editingHome by remember { mutableStateOf(true) }
+                var editingHome by remember { mutableStateOf(true) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -170,16 +169,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
         }
             val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
+            val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
         priority
     } else {
         homePackages.map { pkg ->
             apps.firstOrNull { it.pkg == pkg }
         }
-            }
+    }
+
+    val folders = FOLDERS.mapNotNull { (name, pkgs) ->
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
         if (found.isEmpty()) null else name to found
     }
-    val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
         .replaceFirstChar { it.uppercase() }
     val w = weather
 
