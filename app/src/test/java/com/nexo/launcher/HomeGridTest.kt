@@ -68,6 +68,18 @@ class HomeGridTest {
         assertEquals(listOf("folder:Media", "app.a", "app.b"), visibleTokens(result))
     }
 
+
+    @Test
+    fun onlyRemovesDuplicatesAcrossHomePagesAndKeepsDistinctApps() {
+        val pages = listOf(
+            List(8) { "-" } + listOf("app.chrome", "app.maps"),
+            List(8) { "-" } + listOf("app.chrome", "app.photos", "app.maps"),
+        )
+        val result = HomeGrid.normalize(pages, emptyMap(), emptyList())
+        assertEquals(listOf("app.chrome", "app.maps", "app.photos"), visibleTokens(result))
+        assertTrue(result.all { it.size == HomeGrid.CELL_COUNT })
+    }
+
     @Test
     fun normalizationIsIdempotentAndKeepsFixedPageDimensions() {
         val pages = listOf(listOf("app.a", "app.b"), emptyList())
