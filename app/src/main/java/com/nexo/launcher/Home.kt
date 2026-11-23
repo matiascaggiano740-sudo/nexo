@@ -234,7 +234,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
             Text(date, color = Color.White, fontSize = 15.sp)
             Spacer(Modifier.height(12.dp))
-                        LazyVerticalGrid(
+                                    LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
                     .weight(1f)
@@ -257,18 +257,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
 
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    row.forEach { app ->
-                        AppIcon(
-                            app,
-                            60.dp,
-                            Color.White,
-                            onLongPress = { editingHome = true }
-                        )
-                    }
-                }
-            }
 
             if (folders.isNotEmpty()) {
                 Row(
@@ -294,7 +282,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
                     }
                 }
-
                 Spacer(Modifier.width(8.dp))
 
                 Surface(
