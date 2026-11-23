@@ -876,28 +876,28 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         AlertDialog(
             onDismissRequest = { pendingImportText = null },
             title = { Text("¿Restaurar este respaldo?") },
-            text = { Text("Se reemplazarán la distribución del inicio, las carpetas, el dock, la ciudad, la frase, la imagen de tarjeta y las categorías manuales actuales.") },
+            text = { Text("Se reemplazarán la distribución del inicio, las carpetas, el dock, la ciudad, la frase, la imagen de tarjeta, las categorías manuales y el conjunto de widgets actuales. Los widgets que no formen parte del respaldo se quitarán. Los que no estén disponibles en este teléfono tendrás que agregarlos y configurarlos de nuevo.") },
             confirmButton = { TextButton(onClick = {
                 runCatching {
                     val saved = LauncherBackup.restore(ctx, LauncherBackup.parse(backupText))
                     iconTheme = savedIconTheme(ctx)
-                    packageRefreshScope.launch {
-                        val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
-                        apps = refreshed
-                        dock = dockPackages.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
-                    }
                     homePages = saved.pages
                     homePackages = saved.pages.firstOrNull().orEmpty()
                     currentPage = 0
                     dockPackages = saved.dock
                     dock = saved.dock.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                    packageRefreshScope.launch {
+                        val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
+                        apps = refreshed
+                        dock = saved.dock.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
+                    }
                     userFolders = saved.folders
                     city = saved.city
                     quote = saved.quote
                     photoTick++
                     val widgetCounts = launcherActivity?.restoreWidgetPlacements(saved.widgetSpecs, saved.pages.size) ?: (0 to saved.widgetSpecs.length())
                     pendingImportText = null
-                    Toast.makeText(ctx, "Respaldo restaurado. ${widgetCounts.second} widget(s) requieren agregarse de nuevo.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(ctx, "Respaldo restaurado. ${widgetCounts.second} widget(s) hay que agregarlos de nuevo; se quitaron ${widgetCounts.third} widget(s) ajenos al respaldo.", Toast.LENGTH_LONG).show()
                 }.onFailure { Toast.makeText(ctx, it.message ?: "No se pudo restaurar el respaldo", Toast.LENGTH_LONG).show() }
             }) { Text("Restaurar") } },
             dismissButton = { TextButton(onClick = { pendingImportText = null }) { Text("Cancelar") } }

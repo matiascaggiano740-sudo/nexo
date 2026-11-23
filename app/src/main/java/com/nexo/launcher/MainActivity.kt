@@ -231,7 +231,7 @@ class MainActivity : ComponentActivity() {
         ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight?.coerceAtLeast(96) ?: 132
 
     /** Restores metadata only for widget instances that still exist; never fabricates widget IDs. */
-    fun restoreWidgetPlacements(specs: JSONArray, pageCount: Int): Pair<Int, Int> {
+    fun restoreWidgetPlacements(specs: JSONArray, pageCount: Int): Triple<Int, Int, Int> {
         val manager = AppWidgetManager.getInstance(this)
         val used = mutableSetOf<Int>()
         var restored = 0
@@ -264,8 +264,16 @@ class MainActivity : ComponentActivity() {
             }
             restored++
         }
+        val removedIds = hostedWidgetIds.filterNot { it in used }.toList()
+        removedIds.forEach { id ->
+            hostedWidgetIds.remove(id)
+            hostedWidgetPages.remove(id)
+            hostedWidgetHeights.remove(id)
+            widgetHost.deleteAppWidgetId(id)
+            getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().remove("height_$id").apply()
+        }
         persistWidgetState()
-        return restored to needsReAdd
+        return Triple(restored, needsReAdd, removedIds.size)
     }
 
     fun canResizeWidget(id: Int): Boolean {
