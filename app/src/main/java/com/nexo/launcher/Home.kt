@@ -612,8 +612,6 @@ fun AppIcon(
     } else {
         Modifier
     }
-
-        val iconModifier = Modifier.width(size + 12.dp).let { base ->
     val iconModifier = Modifier
         .width(size + 12.dp)
         .then(dragModifier)
