@@ -31,10 +31,12 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("page-preview-1").performClick()
         composeRule.onNodeWithTag("finish-home-edit").performClick()
 
-        composeRule.onAllNodesWithTag("home-page-indicator-selected").assertCountEquals(1)
-        composeRule.onNodeWithTag("home-page-indicator").performClick()
+        composeRule.onAllNodesWithTag("home-page-indicator-selected-1").assertCountEquals(1)
         composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
-        composeRule.onAllNodesWithTag("home-page-indicator").performClick()
+        composeRule.onNodeWithTag("home-page-indicator-0").performClick()
+        composeRule.onAllNodesWithTag("home-page-indicator-selected-0").assertCountEquals(1)
+        composeRule.onNodeWithTag("home-page-indicator-1").performClick()
+        composeRule.onAllNodesWithTag("home-page-indicator-selected-1").assertCountEquals(1)
         composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
     }
 }
