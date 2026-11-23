@@ -55,7 +55,8 @@ object LauncherBackup {
                 .put("city", visual.getString("city", ""))
                 .put("quote", visual.getString("quote", DEFAULT_QUOTE))
                 .put("photoJpegBase64", photoData ?: JSONObject.NULL)
-                .put("manualCategories", catJson))
+                .put("manualCategories", catJson)
+                .put("iconTheme", savedIconTheme(context).key))
             .put("widgets", widgets)
             .put("notes", JSONObject()
                 .put("wallpaper", "System wallpaper is not included; Android manages it outside NEXO.")
@@ -128,6 +129,10 @@ object LauncherBackup {
             .putString("user_folders", foldersRaw).apply()
 
         val settings = root.optJSONObject("settings") ?: JSONObject()
+        if (settings.has("iconTheme")) {
+            val theme = IconTheme.fromKey(settings.optString("iconTheme", "original"))
+            context.getSharedPreferences("nexo_icon_settings", Context.MODE_PRIVATE).edit().putString("theme", theme.key).apply()
+        }
         val city = settings.optString("city", "")
         val quote = settings.optString("quote", DEFAULT_QUOTE)
         val photoData = settings.optString("photoJpegBase64", "").takeIf { it.isNotBlank() && it != "null" }

@@ -157,6 +157,8 @@ fun Home() {
     var pendingImportText by remember { mutableStateOf<String?>(null) }
     var showNotificationAccessDialog by remember { mutableStateOf(false) }
     var showLockAdminDialog by remember { mutableStateOf(false) }
+    var showIconThemeDialog by remember { mutableStateOf(false) }
+    var iconTheme by remember { mutableStateOf(savedIconTheme(ctx)) }
     var shortcutTarget by remember { mutableStateOf<AppItem?>(null) }
     var shortcutRows by remember { mutableStateOf<List<ShortcutInfo>>(emptyList()) }
     var shortcutAccessDenied by remember { mutableStateOf(false) }
@@ -670,6 +672,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             })
                     }
                     if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
+                    if (editingHome) TextButton(onClick = { showIconThemeDialog = true }) { Text("Iconos", color = Color.White) }
                     if (editingHome) TextButton(onClick = { showBackupDialog = true }) { Text("Respaldo", color = Color.White) }
                     if (editingHome) TextButton(onClick = { showNotificationAccessDialog = true }) { Text(if (NotificationDots.hasAccess(ctx)) "Avisos ✓" else "Avisos") }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
@@ -764,6 +767,43 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             })
         }
     }
+    if (showIconThemeDialog) AlertDialog(
+        onDismissRequest = { showIconThemeDialog = false },
+        title = { Text("Estilo de iconos") },
+        text = { Column {
+            Text("Las imágenes se usan tal como fueron entregadas. Las apps sin una correspondencia identificable conservan el icono original del POCO.", style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(8.dp))
+            IconTheme.entries.forEach { option ->
+                Row(Modifier.fillMaxWidth().clickable {
+                    showIconThemeDialog = false
+                    if (option != iconTheme) {
+                        iconTheme = option
+                        ctx.getSharedPreferences("nexo_icon_settings", 0).edit().putString("theme", option.key).apply()
+                        packageRefreshScope.launch {
+                            val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
+                            apps = refreshed
+                            dock = dockPackages.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
+                        }
+                    }
+                }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = iconTheme == option, onClick = {
+                        showIconThemeDialog = false
+                        if (option != iconTheme) {
+                            iconTheme = option
+                            ctx.getSharedPreferences("nexo_icon_settings", 0).edit().putString("theme", option.key).apply()
+                            packageRefreshScope.launch {
+                                val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
+                                apps = refreshed
+                                dock = dockPackages.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
+                            }
+                        }
+                    })
+                    Text(option.title, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        } },
+        confirmButton = { TextButton(onClick = { showIconThemeDialog = false }) { Text("Cerrar") } }
+    )
     if (shortcutTarget != null && !shortcutAccessDenied) AlertDialog(
         onDismissRequest = { shortcutTarget = null; shortcutRows = emptyList() },
         title = { Text("${shortcutTarget?.label} · accesos directos") },
@@ -840,6 +880,12 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             confirmButton = { TextButton(onClick = {
                 runCatching {
                     val saved = LauncherBackup.restore(ctx, LauncherBackup.parse(backupText))
+                    iconTheme = savedIconTheme(ctx)
+                    packageRefreshScope.launch {
+                        val refreshed = withContext(Dispatchers.IO) { loadApps(ctx) }
+                        apps = refreshed
+                        dock = dockPackages.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
+                    }
                     homePages = saved.pages
                     homePackages = saved.pages.firstOrNull().orEmpty()
                     currentPage = 0
@@ -1165,7 +1211,7 @@ fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                     apps.take(4).chunked(2).forEach { r ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            r.forEach { Image(it.icon, null, Modifier.size(20.dp).clip(RoundedCornerShape(6.dp))) }
+                            r.forEach { item -> Image(item.icon, null, if (item.usesThemeAsset) Modifier.size(20.dp) else Modifier.size(20.dp).clip(RoundedCornerShape(6.dp))) }
                         }
                     }
                 }
@@ -1273,7 +1319,7 @@ fun AppIcon(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(size)) {
-            Image(app.icon, app.label, Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)))
+            Image(app.icon, app.label, if (app.usesThemeAsset) Modifier.fillMaxSize() else Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)))
             val pendingCount = NotificationDots.counts[app.pkg] ?: 0
             if (pendingCount > 0) Surface(
                 color = Color(0xFFE53935),
