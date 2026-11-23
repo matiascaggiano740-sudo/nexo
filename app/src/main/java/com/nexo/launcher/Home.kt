@@ -118,7 +118,7 @@ fun Home() {
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
         var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
-    var editingHome by remember { mutableStateOf(false) }
+        var editingHome by remember { mutableStateOf(true) }
     var packageRefresh by remember { mutableStateOf(0) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
@@ -356,10 +356,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
-                    modifier = Modifier.size(46.dp).clickable { editingHome = !editingHome }
+                                        modifier = Modifier.size(46.dp).clickable { editHome = true }
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(if (editingHome) "✓" else "⋮", color = Color.White, fontSize = 25.sp)
+                                                Text("⋮", color = Color.White, fontSize = 25.sp)
                     }
                 }
             }
