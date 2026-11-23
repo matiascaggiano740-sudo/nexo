@@ -31,15 +31,15 @@ object NotificationDots {
 class NotificationDotListener : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
-        runCatching { NotificationDots.replaceFrom(activeNotifications.orEmpty().toTypedArray()) }
+        runCatching { NotificationDots.replaceFrom(activeNotifications.orEmpty()) }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        runCatching { NotificationDots.replaceFrom(activeNotifications.orEmpty().toTypedArray()) }
+        runCatching { NotificationDots.replaceFrom(activeNotifications.orEmpty()) }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        runCatching { NotificationDots.replaceFrom(activeNotifications.orEmpty().toTypedArray()) }
+        runCatching { NotificationDots.replaceFrom(activeNotifications.orEmpty()) }
     }
 
     override fun onListenerDisconnected() {
