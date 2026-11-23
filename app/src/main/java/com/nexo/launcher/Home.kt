@@ -47,6 +47,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -406,10 +407,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
     ) {
-        launcherActivity?.currentWallpaper?.value?.let { wallpaper ->
-            Image(wallpaper, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x44000000), Color(0x22000000), Color(0x77000000)))))
-        }
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val nativeWidgetRows = pageWidgetIds.sumOf { id ->
@@ -524,6 +521,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     val folderName = slot?.takeIf { it.startsWith("folder:") }?.removePrefix("folder:")
                     val folderApps = folderName?.let { name -> userFolders.find { it.first == name }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } } }.orEmpty()
                     val app = slot?.takeUnless { it.startsWith("folder:") }?.let { pkg -> apps.find { it.pkg == pkg } }
+                    val iconSizing = homeIconSizing(cellHeight.value)
                     HomeAppCell(
                         app = app,
                         folderName = folderName,
@@ -533,7 +531,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = logicalIndex,
                         editingHome = editingHome,
                         cellHeight = cellHeight,
-                        iconSize = (cellHeight * 0.54f).coerceIn(42.dp, 56.dp),
+                        iconSize = iconSizing.iconSizeDp.dp,
                         onLongPress = { editingHome = true },
                         onDoubleTapEmpty = {
                             if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
@@ -1805,6 +1803,7 @@ private fun HomeAppCell(
         Modifier
             .fillMaxWidth()
             .height(cellHeight)
+            .clipToBounds()
             .then(
                 if (app == null && folderName == null) {
                     Modifier.pointerInput(index) {
@@ -1824,7 +1823,7 @@ private fun HomeAppCell(
         if (app != null) {
             AppIcon(
                 app, iconSize, Color.White,
-                showLabel = cellHeight >= 64.dp,
+                showLabel = homeIconSizing(cellHeight.value).showLabel,
                 labelFontSize = 11.sp,
                 testTag = "home-page-app",
                 onLongPress = onLongPress,
@@ -2139,8 +2138,6 @@ LaunchedEffect(apps) {
         dragPayload = app.pkg)
 }
 
-
-                                                repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) }
 
                     }
 
