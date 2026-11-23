@@ -189,11 +189,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         AppIcon(app, 60.dp, Color.White, onLongPress = { editingHome = true })
                     }
                 }
-            }
-            if (folders.isNotEmpty()) {
-                    }
-                }
-            }
+                                                }
             if (folders.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     folders.forEach { (name, list) -> FolderIcon(name, list, 60.dp) { openFolder = name } }
