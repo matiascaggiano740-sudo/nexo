@@ -93,7 +93,11 @@ class MainActivity : ComponentActivity() {
         when (requestCode) {
             REQUEST_PICK -> {
                 val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)
-                if (info == null) { widgetHost.deleteAppWidgetId(id); return }
+                if (info == null) {
+                    widgetHost.deleteAppWidgetId(id)
+                    pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+                    return
+                }
                 val allowed = AppWidgetManager.getInstance(this).bindAppWidgetIdIfAllowed(id, info.provider)
                 if (allowed) launchConfiguration(id)
                 else {
