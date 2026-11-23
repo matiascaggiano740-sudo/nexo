@@ -132,6 +132,7 @@ private fun writeUserFolders(ctx: android.content.Context, folders: List<Pair<St
     ctx.getSharedPreferences("nexo_home", 0).edit().putString("user_folders", array.toString()).apply()
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Home() {
     val ctx = LocalContext.current
@@ -242,7 +243,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
-                fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
+                fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light,
+                modifier = Modifier.padding(top = 4.dp).combinedClickable(onClick = {}, onLongClick = { editingHome = true }))
             Text(date, color = Color.White, fontSize = 15.sp)
                                     Spacer(Modifier.height(12.dp))
             Surface(
@@ -525,7 +527,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val updated = userFolders.filterNot { it.first == existing.first }
         userFolders = updated; writeUserFolders(ctx, updated); folderEditor = null
     }) }
-    if (showPageManager) PageManagerDialog(homePages, currentPage,
+    if (showPageManager) PageManagerDialog(homePages, currentPage, launcherActivity?.hostedWidgetPages?.values?.toSet().orEmpty(),
         onDismiss = { showPageManager = false },
         onSelect = { currentPage = it; homePackages = homePages.getOrNull(it).orEmpty(); showPageManager = false },
         onMove = { from, to ->
@@ -566,7 +568,7 @@ private fun UserFolderDialog(
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                 apps.sortedBy { it.label.lowercase() }.forEach { app ->
                     Row(Modifier.fillMaxWidth().clickable { if (app.pkg in selected) selected.remove(app.pkg) else selected.add(app.pkg) }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(app.pkg in selected, { checked -> if (checked) { if (app.pkg !in selected) selected.add(app.pkg) } else selected.remove(app.pkg) })
+                        Checkbox(app.pkg in selected, onCheckedChange = null)
                         Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
@@ -581,7 +583,7 @@ private fun UserFolderDialog(
 
 @Composable
 private fun PageManagerDialog(
-    pages: List<List<String>>, current: Int, onDismiss: () -> Unit, onSelect: (Int) -> Unit,
+    pages: List<List<String>>, current: Int, widgetPages: Set<Int>, onDismiss: () -> Unit, onSelect: (Int) -> Unit,
     onMove: (Int, Int) -> Unit, onDelete: (Int) -> Unit
 ) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Páginas de inicio") },
@@ -593,7 +595,7 @@ private fun PageManagerDialog(
                     }
                     TextButton(enabled = index > 0, onClick = { onMove(index, index - 1) }) { Text("↑") }
                     TextButton(enabled = index < pages.lastIndex, onClick = { onMove(index, index + 1) }) { Text("↓") }
-                    TextButton(enabled = index > 0 && page.all { it == "-" }, onClick = { onDelete(index) }) { Text("×") }
+                    TextButton(enabled = index > 0 && page.all { it == "-" } && index !in widgetPages, onClick = { onDelete(index) }) { Text("×") }
                 }
             }
             Text("Solo se pueden borrar páginas vacías.", style = MaterialTheme.typography.bodySmall)
