@@ -279,7 +279,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 val height = launcherActivity?.widgetHeightDp(id) ?: 132
                 ((height + 99) / 100).coerceAtLeast(1)
             }.coerceAtMost(7)
-            homeCapacity = (28 - widgetRows * 4).coerceIn(0, 28)
+            val widgetCellOffset = widgetRows * 4
+            homeCapacity = (28 - widgetCellOffset).coerceIn(0, 28)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
@@ -336,7 +337,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         }
                     } else {
                     val index = itemIndex - pageWidgetIds.size
-                    val slot = homeSlots.getOrNull(index)
+                    val logicalIndex = index + widgetCellOffset
+                    val slot = homeSlots.getOrNull(logicalIndex)
                     val folderName = slot?.takeIf { it.startsWith("folder:") }?.removePrefix("folder:")
                     val folderApps = folderName?.let { name -> userFolders.find { it.first == name }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } } }.orEmpty()
                     val app = slot?.takeUnless { it.startsWith("folder:") }?.let { pkg -> apps.find { it.pkg == pkg } }
@@ -346,7 +348,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         folderApps = folderApps,
                         onFolderClick = { if (folderName != null) openFolder = "user:$folderName" },
                         onFolderEdit = { if (folderName != null) userFolders.find { it.first == folderName }?.let { folderEditor = it } },
-                        index = index,
+                        index = logicalIndex,
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
                         onRemove = { pkg ->
@@ -368,7 +370,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             homePages = updatedPages
                             homePackages = slots
                         },
-                        onDrop = { draggedPkg, targetIndex ->
+                        onDrop = { payload, targetIndex ->
+                            val fromDock = payload.startsWith("dock:")
+                            val draggedPkg = payload.removePrefix("home:").removePrefix("dock:")
+                            val logicalTargetIndex = targetIndex + widgetCellOffset
                             val draggedFolderName = draggedPkg.removePrefix("folder:").takeIf { draggedPkg.startsWith("folder:") }
                             val draggedFolder = draggedFolderName?.let { name -> userFolders.find { it.first == name } }
                             val draggedAllowed = if (draggedFolderName != null) draggedFolder != null else apps.any { it.pkg == draggedPkg }
@@ -379,11 +384,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 }
                                 while (pages.size <= currentPage) pages.add(mutableListOf())
                                 val dest = pages[currentPage]
-                                while (dest.size < homeCapacity) dest.add("-")
+                                while (dest.size <= logicalTargetIndex) dest.add("-")
 
                                 val sourcePage = pages.indexOfFirst { it.contains(draggedPkg) }
                                 var canApplyDrop = true
-                                val target = dest[targetIndex]
+                                val target = dest[logicalTargetIndex]
                                 if (target == draggedPkg) {
                                     canApplyDrop = false
                                 } else if (target?.startsWith("folder:") == true) {
@@ -411,7 +416,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                             if (folder.first == draggedFolder.first) folder.first to (folder.second + existingApp.pkg).distinct() else folder
                                         }
                                         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-                                        dest[targetIndex] = draggedPkg
+                                        dest[logicalTargetIndex] = draggedPkg
                                         if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
                                     } else if (existingApp != null && draggedApp != null) {
                                         var folderName = "Carpeta"
@@ -419,30 +424,30 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                         while (userFolders.any { it.first == folderName }) { folderName = "Carpeta $suffix"; suffix++ }
                                         val updatedFolders = userFolders + (folderName to listOf(existingApp.pkg, draggedApp.pkg).distinct())
                                         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-                                        dest[targetIndex] = "folder:$folderName"
+                                        dest[logicalTargetIndex] = "folder:$folderName"
                                         if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
                                     }
                                 } else if (sourcePage == currentPage) {
                                     val sourceIndex = dest.indexOf(draggedPkg)
                                     if (sourceIndex >= 0) {
-                                        val displaced = dest[targetIndex]
-                                        dest[targetIndex] = draggedPkg
+                                        val displaced = dest[logicalTargetIndex]
+                                        dest[logicalTargetIndex] = draggedPkg
                                         dest[sourceIndex] = displaced ?: "-"
                                     }
                                 } else if (sourcePage >= 0) {
                                     val sourceSlots = pages[sourcePage]
                                     val sourceIndex = sourceSlots.indexOf(draggedPkg)
-                                    val displaced = dest[targetIndex]
+                                    val displaced = dest[logicalTargetIndex]
                                     sourceSlots[sourceIndex] = displaced ?: "-"
-                                    dest[targetIndex] = draggedPkg
+                                    dest[logicalTargetIndex] = draggedPkg
                                 } else {
                                     val emptyIndex = dest.indexOfFirst { it == "-" }
                                     if (emptyIndex < 0) {
                                         Toast.makeText(ctx, "No hay espacio libre en esta página", Toast.LENGTH_SHORT).show()
                                         canApplyDrop = false
                                     } else {
-                                        for (i in emptyIndex downTo targetIndex + 1) dest[i] = dest[i - 1]
-                                        dest[targetIndex] = draggedPkg
+                                        for (i in emptyIndex downTo logicalTargetIndex + 1) dest[i] = dest[i - 1]
+                                        dest[logicalTargetIndex] = draggedPkg
                                     }
                                 }
 
@@ -454,6 +459,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                         .apply()
                                     homePages = updatedPages
                                     homePackages = dest.toList()
+                                    if (fromDock) {
+                                        dockPackages = dockPackages.map { if (it == draggedPkg) "-" else it }
+                                        dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                                        ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|")).apply()
+                                    }
                                     drawer = false
                                 }
                             }
@@ -528,7 +538,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
                                 dock = updated.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
                             },
-                            onDrop = { pkg ->
+                            onDrop = { payload ->
+                                val fromHome = payload.startsWith("home:")
+                                val fromDock = payload.startsWith("dock:")
+                                val pkg = payload.removePrefix("home:").removePrefix("dock:")
                                 if (apps.any { it.pkg == pkg }) {
                                     val updated = dockPackages.toMutableList().apply { while (size < 4) add("-") }
                                     val sourceIndex = updated.indexOf(pkg)
@@ -540,6 +553,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     dockPackages = updated
                                     ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
                                     dock = updated.mapNotNull { item -> apps.find { it.pkg == item } }
+                                    if (fromHome && !fromDock) {
+                                        val pages = homePages.map { it.toMutableList() }.toMutableList()
+                                        pages.forEach { page -> val index = page.indexOf(pkg); if (index >= 0) page[index] = "-" }
+                                        homePages = pages.map { it.toList() }
+                                        homePackages = homePages.getOrNull(currentPage).orEmpty()
+                                        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
+                                    }
                                 }
                             })
                     }
@@ -607,12 +627,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val pageWidgetArea = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
             ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
         val pageCellLimit = (28 - pageWidgetArea).coerceAtLeast(0)
-        val emptySlot = targetPage.take(pageCellLimit).indexOfFirst { it == "-" }
+        val pageOffset = pageWidgetArea
+        val visibleRange = pageOffset until (pageOffset + pageCellLimit).coerceAtMost(28)
+        val emptyRelative = targetPage.drop(pageOffset).take(pageCellLimit).indexOfFirst { it == "-" }
+        val emptySlot = if (emptyRelative >= 0) pageOffset + emptyRelative else -1
         val folderSlot = when {
-            existingFolderSlot in 0 until pageCellLimit -> existingFolderSlot
-            reusableIndex in 0 until pageCellLimit -> reusableIndex
+            existingFolderSlot in visibleRange -> existingFolderSlot
+            reusableIndex in visibleRange -> reusableIndex
             emptySlot >= 0 -> emptySlot
-            targetPage.size < pageCellLimit -> targetPage.size.also { targetPage.add("-") }
+            targetPage.size < pageOffset + pageCellLimit -> (pageOffset + pageCellLimit).coerceAtMost(28).also { targetPage.add("-") }
             else -> -1
         }
         if (folderSlot < 0) {
@@ -983,7 +1006,7 @@ private fun DockCell(
             ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
     ), contentAlignment = Alignment.Center) {
         if (app != null) AppIcon(app, 52.dp, Color.White, showLabel = false,
-            onLongPress = onLongPress, dragPayload = app.pkg)
+            onLongPress = onLongPress, dragPayload = "dock:${app.pkg}")
         if (editing && app != null) Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
             modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { onRemove() }) {
             Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 15.sp, lineHeight = 15.sp) }
@@ -1039,7 +1062,7 @@ private fun HomeAppCell(
         contentAlignment = Alignment.Center
     ) {
         if (app != null) {
-            AppIcon(app, 60.dp, Color.White, onLongPress = onLongPress, dragPayload = app.pkg)
+            AppIcon(app, 60.dp, Color.White, onLongPress = onLongPress, dragPayload = "home:${app.pkg}")
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove(app.pkg) }) {
