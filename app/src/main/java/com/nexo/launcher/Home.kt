@@ -126,6 +126,10 @@ fun Home() {
     val launcherActivity = ctx as? MainActivity
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
+    var dockPackages by remember {
+        mutableStateOf(ctx.getSharedPreferences("nexo_home", 0).getString("dock_packages", "")
+            ?.takeIf { it.isNotBlank() }?.split("|") ?: emptyList())
+    }
     var homePackages by remember {
         val prefs = ctx.getSharedPreferences("nexo_home", 0)
         val savedPages = prefs.getString("pages", "")?.takeIf { it.isNotBlank() }
@@ -171,7 +175,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val sys = loadSystemDock(ctx)
             val msgs = list.firstOrNull { it.pkg in MESSAGES } ?: sys.getOrNull(1)
             val chrome = list.find { it.pkg == "com.android.chrome" }
-            dock = listOfNotNull(sys.getOrNull(0), msgs, chrome, sys.getOrNull(2))
+            val defaultDock = listOfNotNull(sys.getOrNull(0), msgs, chrome, sys.getOrNull(2)).map { it.pkg }
+            val savedDock = ctx.getSharedPreferences("nexo_home", 0).getString("dock_packages", "")
+                ?.takeIf { it.isNotBlank() }?.split("|")
+            val selectedDock = (savedDock ?: defaultDock).take(4).toMutableList()
+            while (selectedDock.size < 4) selectedDock.add("-")
+            dockPackages = selectedDock
+            dock = selectedDock.mapNotNull { pkg -> list.find { it.pkg == pkg } }
             apps = list
         }
     }
@@ -506,12 +516,33 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 shape = RoundedCornerShape(32.dp),
                 modifier = Modifier.fillMaxWidth().height(76.dp)
             ) {
-                Row(
-                    Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    dock.forEach { AppIcon(it, 52.dp, Color.White, showLabel = false) }
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    repeat(4) { dockIndex ->
+                        val dockApp = dockPackages.getOrNull(dockIndex)?.let { pkg -> apps.find { it.pkg == pkg } }
+                        DockCell(modifier = Modifier.weight(1f).fillMaxHeight(), app = dockApp, index = dockIndex, editing = editingHome,
+                            onLongPress = { editingHome = true },
+                            onRemove = {
+                                val updated = dockPackages.toMutableList().apply { while (size < 4) add("-"); this[dockIndex] = "-" }
+                                dockPackages = updated
+                                ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
+                                dock = updated.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                            },
+                            onDrop = { pkg ->
+                                if (apps.any { it.pkg == pkg }) {
+                                    val updated = dockPackages.toMutableList().apply { while (size < 4) add("-") }
+                                    val sourceIndex = updated.indexOf(pkg)
+                                    if (sourceIndex >= 0 && sourceIndex != dockIndex) {
+                                        val displaced = updated[dockIndex]
+                                        updated[dockIndex] = pkg
+                                        updated[sourceIndex] = displaced
+                                    } else updated[dockIndex] = pkg
+                                    dockPackages = updated
+                                    ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
+                                    dock = updated.mapNotNull { item -> apps.find { it.pkg == item } }
+                                }
+                            })
+                    }
                 }
             }
 
@@ -930,6 +961,36 @@ fun AppIcon(
         }
     }
 }
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun DockCell(
+    modifier: Modifier, app: AppItem?, index: Int, editing: Boolean, onLongPress: () -> Unit,
+    onRemove: () -> Unit, onDrop: (String) -> Unit
+) {
+    val target = remember(index, onDrop) {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                val clip = event.toAndroidDragEvent().clipData ?: return false
+                if (clip.itemCount == 0) return false
+                val pkg = clip.getItemAt(0).text?.toString() ?: return false
+                onDrop(pkg)
+                return true
+            }
+        }
+    }
+    Box(modifier.dragAndDropTarget(
+        shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
+            ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
+    ), contentAlignment = Alignment.Center) {
+        if (app != null) AppIcon(app, 52.dp, Color.White, showLabel = false,
+            onLongPress = onLongPress, dragPayload = app.pkg)
+        if (editing && app != null) Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+            modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { onRemove() }) {
+            Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 15.sp, lineHeight = 15.sp) }
+        }
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun HomeAppCell(
