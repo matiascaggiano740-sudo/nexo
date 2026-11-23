@@ -1726,7 +1726,7 @@ private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit
         }
     }
     Box(Modifier.size(40.dp)
-        .testTag(if (selected) "home-page-indicator-selected" else "home-page-indicator")
+        .testTag(if (selected) "home-page-indicator-selected-$page" else "home-page-indicator-$page")
         .semantics { contentDescription = if (selected) "Ir a la página ${page + 1}, seleccionada" else "Ir a la página ${page + 1}" }
         .clickable(onClick = onSelect)
         .dragAndDropTarget(
