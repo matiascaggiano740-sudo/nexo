@@ -254,7 +254,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
 
-            Spacer(Modifier.height(10.
+                        Spacer(Modifier.height(10.dp))
         }
         AnimatedVisibility(drawer, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
             Drawer(apps) { drawer = false }
