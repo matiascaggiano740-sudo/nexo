@@ -502,7 +502,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             if (folders.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    folders.forEach { (name, list) -> FolderIcon(name, list, 56.dp) { openFolder = name } }
+                    folders.forEach { (name, list) -> FolderIcon(name, list, 56.dp, onClick = { openFolder = name }) }
                 }
             }
             if (editingHome) TextButton(onClick = { showNewFolder = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
