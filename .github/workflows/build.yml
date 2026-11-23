@@ -14,19 +14,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: 8.14.4
-      - name: Preparar clave de firma
+      -       - name: Preparar clave de firma
         env:
           NEXO_KEYSTORE_BASE64: ${{ secrets.NEXO_KEYSTORE_BASE64 }}
         run: |
-                  printenv NEXO_KEYSTORE_BASE64 | base64 --decode > nexo-release.jks
+          printf '%s' "$NEXO_KEYSTORE_BASE64" | base64 --decode > nexo-release-final.p12
 
       - name: Compilar APK firmado
         run: gradle assembleRelease --no-daemon
         env:
-          NEXO_KEYSTORE_PATH: ${{ runner.temp }}/nexo-release.jks
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
-          NEXO_KEY_ALIAS: nexo
       - uses: actions/upload-artifact@v6
         with:
           name: NEXO-apk
