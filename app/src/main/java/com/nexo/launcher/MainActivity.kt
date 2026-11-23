@@ -37,8 +37,17 @@ class MainActivity : ComponentActivity() {
             pendingWidgetAppCells = state.getInt(STATE_PENDING_WIDGET_APP_CELLS, 0)
         }
         enableEdgeToEdge()
-        window.setBackgroundDrawableResource(android.R.color.transparent)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+        val launchedAsHome = intent?.action == Intent.ACTION_MAIN &&
+            intent?.categories?.contains(Intent.CATEGORY_HOME) == true
+        if (launchedAsHome) {
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+        } else {
+            // When NEXO is opened as an ordinary app, don't draw the previous launcher through
+            // the translucent wallpaper window; its icons would appear over NEXO's clock/pages.
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.rgb(18, 17, 15)))
+        }
         widgetHost = AppWidgetHost(this, HOST_ID)
         val widgetPrefs = getSharedPreferences("nexo_widgets", MODE_PRIVATE)
         val storedWidgetIds = widgetPrefs.getString("ids", "").orEmpty().split(",").mapNotNull { it.toIntOrNull() }
