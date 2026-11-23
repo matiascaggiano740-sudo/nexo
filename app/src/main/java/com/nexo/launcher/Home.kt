@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import android.widget.Toast
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -849,6 +850,7 @@ private fun AppWithCategoryMenu(
 @Composable
 fun Drawer(apps: List<AppItem>, editingHome: Boolean, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
+    val drawerListState = rememberLazyListState()
     var showOrganizer by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
 var playCategories by remember {
@@ -866,22 +868,6 @@ var manualCategories by remember {
             .mapNotNull { (key, value) -> (value as? String)?.let { key to it } }
             .toMap()
     )
-}
-LaunchedEffect(apps) {
-    val cache = ctx.getSharedPreferences("nexo_play_categories", 0)
-
-    for (app in apps) {
-        if (playCategories.containsKey(app.pkg)) continue
-
-        val category = withContext(Dispatchers.IO) {
-            loadPlayStoreCategory(app.pkg)
-        }
-
-        if (category != null) {
-            cache.edit().putString(app.pkg, category).apply()
-            playCategories = playCategories + (app.pkg to category)
-        }
-    }
 }
       val categories = remember(apps, q, playCategories, manualCategories) {
         val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
@@ -950,7 +936,7 @@ LaunchedEffect(apps) {
     }
 
     Spacer(Modifier.height(8.dp))
-        LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp)) {
             categories.forEach { (title, members) ->
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
                 items(members.chunked(4), key = { row -> row.joinToString { it.pkg } }) { row ->
