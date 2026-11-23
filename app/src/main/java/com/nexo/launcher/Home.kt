@@ -234,21 +234,29 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
             Text(date, color = Color.White, fontSize = 15.sp)
             Spacer(Modifier.height(12.dp))
-            Surface(color = Glass, shape = RoundedCornerShape(22.dp),
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable { editCity = true }) {
-                Row(Modifier.padding(horizontal = 18.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (w != null) "${w.temp}°" else "--°", color = Color.White, fontSize = 28.sp, fontFamily = FontFamily.Serif)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        if (w != null) "${w.label} · ${w.city}" else if (city.isBlank()) "Toca para elegir tu ciudad" else "Cargando clima...",
-                        color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { size ->
+                        val rows = size.height / homeRowHeightPx
+                        homeCapacity = (rows * 4).coerceIn(0, 28)
+                    },
+                userScrollEnabled = false,
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(priority.take(homeCapacity), key = { it.pkg }) { app ->
+                    AppIcon(
+                        app,
+                        60.dp,
+                        Color.White,
+                        onLongPress = { editingHome = true }
                     )
                 }
             }
-            Spacer(Modifier.height(16.dp))
-                                                            priority.chunked(3).forEach { row ->
-                Row(
-                    Modifier.fillMaxWidth().padding(bottom = 10.dp),
+
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     row.forEach { app ->
@@ -272,7 +280,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     }
                 }
             }
-
             Spacer(Modifier.height(4.dp))
             QuoteCard(quote, photo) { editCard = true }
             Spacer(Modifier.height(12.dp))
