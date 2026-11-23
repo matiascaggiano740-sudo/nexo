@@ -22,6 +22,12 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import android.widget.Toast
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -104,7 +110,9 @@ fun Home() {
                 .getString("packages", "")
                 ?.split("|")
                 ?.filter { it.isNotBlank() }
-                ?: emptyList()
+                    var homeCapacity by remember { mutableIntStateOf(0) }
+    val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
+            ?: emptyList()
         )
         }
         var editHome by remember { mutableStateOf(false) }
@@ -179,14 +187,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 if (clip.itemCount == 0) return false
 
                 val pkg = clip.getItemAt(0).text?.toString() ?: return false
-                if (apps.none { it.pkg == pkg }) return false
-
-                val current = if (homePackages.isEmpty()) {
-                    priority.map { it.pkg }
-                } else {
-                    homePackages
+                                if (pkg !in current) {
+                    if (current.size >= homeCapacity) {
+                        Toast.makeText(ctx, "No hay espacio libre en inicio", Toast.LENGTH_SHORT).show()
+                        return true
+                    }
+                    val updated = current + pkg
+                    ctx.getSharedPreferences("nexo_home", 0)
+                        .edit()
+                        .putString("packages", updated.joinToString("|"))
+                        .apply()
+                    homePackages = updated
                 }
-
                 if (pkg !in current) {
                     val updated = current + pkg
                     ctx.getSharedPreferences("nexo_home", 0)
