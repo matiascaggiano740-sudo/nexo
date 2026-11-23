@@ -5,6 +5,19 @@ package com.nexo.launcher
  * Cells 0..7 are the clock/weather header. Page 1 cells 20..27 hold the quote card.
  * Native widgets reserve complete rows immediately below the header.
  */
+internal data class HomeIconSizing(val iconSizeDp: Float, val showLabel: Boolean)
+
+/** Fit the icon and optional label within a measured grid cell without drawing into its neighbor. */
+internal fun homeIconSizing(cellHeightDp: Float): HomeIconSizing {
+    val height = cellHeightDp.coerceAtLeast(0f)
+    val showLabel = height >= 72f
+    val textAndGap = if (showLabel) 24f else 8f
+    val maximumIcon = (height - textAndGap).coerceAtLeast(0f)
+    val icon = (height * 0.54f).coerceAtMost(maximumIcon).coerceAtMost(56f)
+        .coerceAtLeast(minOf(24f, maximumIcon))
+    return HomeIconSizing(icon, showLabel)
+}
+
 internal object HomeGrid {
     const val COLUMN_COUNT = 4
     const val ROW_COUNT = 7
