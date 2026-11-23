@@ -198,6 +198,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
     BackHandler(drawer) { drawer = false }
     BackHandler(openFolder != null) { openFolder = null }
+    BackHandler(editingHome && !drawer && openFolder == null) { editingHome = false }
 
             val priority = if (homePackages.isEmpty()) {
         PRIORITY.mapNotNull { group ->
@@ -417,8 +418,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                             if (folder.first == draggedFolder.first) folder.first to (folder.second + existingApp.pkg).distinct() else folder
                                         }
                                         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-                                        dest[logicalTargetIndex] = draggedPkg
-                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
+                                        dest[logicalTargetIndex] = "-"
                                     } else if (existingApp != null && draggedApp != null) {
                                         var folderName = "Carpeta"
                                         var suffix = 1
