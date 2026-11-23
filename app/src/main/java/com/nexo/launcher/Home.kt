@@ -153,6 +153,7 @@ fun Home() {
     var showBackupDialog by remember { mutableStateOf(false) }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
     var showNotificationAccessDialog by remember { mutableStateOf(false) }
+    var showLockAdminDialog by remember { mutableStateOf(false) }
     var homeCapacity by remember { mutableIntStateOf(28) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
@@ -435,6 +436,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = logicalIndex,
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
+                        onDoubleTapEmpty = {
+                            if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
+                            else showLockAdminDialog = true
+                        },
                         onRemove = { pkg ->
                             val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
                             val idx = slots.indexOf(pkg)
@@ -704,6 +709,17 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             })
         }
     }
+    if (showLockAdminDialog) AlertDialog(
+        onDismissRequest = { showLockAdminDialog = false },
+        title = { Text("Doble toque para bloquear") },
+        text = { Text("Android requiere activar NEXO como administrador del dispositivo para bloquear la pantalla. El permiso se usa solo para esta acción; el bloqueo exigirá tu método de desbloqueo habitual. Podés cancelar ahora y activarlo después.") },
+        confirmButton = { TextButton(onClick = {
+            showLockAdminDialog = false
+            runCatching { launcherActivity?.requestLockAdminActivation() }
+                .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de administrador", Toast.LENGTH_LONG).show() }
+        }) { Text("Revisar permiso") } },
+        dismissButton = { TextButton(onClick = { showLockAdminDialog = false }) { Text("Ahora no") } }
+    )
     if (showNotificationAccessDialog) AlertDialog(
         onDismissRequest = { showNotificationAccessDialog = false },
         title = { Text("Indicadores de notificación") },
@@ -1257,6 +1273,7 @@ private fun HomeAppCell(
     index: Int,
     editingHome: Boolean,
     onLongPress: () -> Unit,
+    onDoubleTapEmpty: () -> Unit = {},
     onRemove: (String) -> Unit,
     onDrop: (String, Int) -> Unit
 ) {
@@ -1280,7 +1297,7 @@ private fun HomeAppCell(
             .then(
                 if (app == null && folderName == null) {
                     Modifier.pointerInput(index) {
-                        detectTapGestures(onLongPress = { onLongPress() })
+                        detectTapGestures(onLongPress = { onLongPress() }, onDoubleTap = { onDoubleTapEmpty() })
                     }
                 } else Modifier
             )

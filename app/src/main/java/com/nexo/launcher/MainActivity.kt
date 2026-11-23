@@ -4,6 +4,8 @@ import android.app.Activity
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -61,6 +63,23 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         if (::widgetHost.isInitialized) widgetHost.stopListening()
         super.onStop()
+    }
+
+    private fun lockAdminComponent() = ComponentName(this, NexoDeviceAdminReceiver::class.java)
+
+    fun isLockAdminActive(): Boolean =
+        (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).isAdminActive(lockAdminComponent())
+
+    fun requestLockAdminActivation() {
+        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, lockAdminComponent())
+            .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "NEXO solicita permiso de administrador solo para bloquear la pantalla cuando uses el doble toque. Podés cancelarlo o revocarlo desde Ajustes.")
+        startActivity(intent)
+    }
+
+    fun lockDeviceNow() {
+        if (!isLockAdminActive()) return
+        runCatching { (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).lockNow() }
     }
 
     fun launchWidgetPicker(page: Int, appCells: Int) {
