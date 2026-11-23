@@ -1750,7 +1750,7 @@ LaunchedEffect(apps) {
     val canShowPlatformShortcuts = launcherApps?.hasShortcutHostPermission() == true
     AppIcon(app, 56.dp, Color.White, onLaunch = close,
         onLongPress = close,
-        onContextMenu = if (canShowPlatformShortcuts) ({ onAppLongPress(app) }) else null,
+        onContextMenu = if (canShowPlatformShortcuts && !editingHome) ({ onAppLongPress(app) }) else null,
         dragPayload = app.pkg)
 }
 

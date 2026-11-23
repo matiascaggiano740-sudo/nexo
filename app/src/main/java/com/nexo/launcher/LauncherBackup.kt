@@ -105,7 +105,7 @@ object LauncherBackup {
         val pagesJson = homeData.getJSONArray("pages")
         val pages = (0 until pagesJson.length()).map { i ->
             val raw = pagesJson.getString(i)
-            raw.split('|')
+            if (raw.isBlank()) emptyList() else raw.split('|')
         }
         val savedDock = homeData.optString("dock", "")
         val values = if (savedDock.isBlank()) emptyList() else savedDock.split('|').map { it.ifBlank { "-" } }
