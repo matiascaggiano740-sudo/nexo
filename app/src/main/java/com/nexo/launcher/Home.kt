@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import android.widget.Toast
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.ui.layout.onSizeChanged
@@ -158,7 +159,7 @@ fun Home() {
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
     var homeCapacity by remember { mutableIntStateOf(0) }
-    val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
+    val homeRowHeightPx = with(LocalDensity.current) { 100.dp.roundToPx() }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
@@ -278,18 +279,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(16.dp))
-            launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }?.forEach { widgetId ->
-                Box(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.fillMaxWidth().height((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(260) ?: 132).dp)) {
-                        AndroidView(factory = { activity ->
-                            launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity)
-                        }, modifier = Modifier.fillMaxSize())
-                    }
-                    if (editingHome) TextButton(onClick = { launcherActivity?.removeWidget(widgetId) },
-                        modifier = Modifier.align(Alignment.TopEnd)) { Text("Quitar", color = Color(0xFFB3261E)) }
-                }
-            }
+            val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
+            val widgetRows = pageWidgetIds.sumOf { id ->
+                val height = launcherActivity?.widgetHeightDp(id)?.coerceAtMost(320) ?: 132
+                ((height + 99) / 100).coerceAtLeast(1)
+            }.coerceAtMost(7)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
@@ -312,17 +306,32 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     }
                     .onSizeChanged { size ->
                         val rows = size.height / homeRowHeightPx
-                        homeCapacity = (rows * 4).coerceIn(0, 28)
+                        homeCapacity = ((rows - widgetRows).coerceAtLeast(0) * 4).coerceIn(0, 28 - widgetRows * 4)
                     },
                 userScrollEnabled = false,
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(
-                    count = homeCapacity,
-                    key = { index -> "home-cell-$index" }
-                ) { index ->
-                                        val app = homeSlots.getOrNull(index)
+                    count = pageWidgetIds.size + homeCapacity,
+                    key = { index -> if (index < pageWidgetIds.size) "widget-${pageWidgetIds[index]}" else "home-cell-${index - pageWidgetIds.size}" },
+                    span = { index -> if (index < pageWidgetIds.size) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
+                ) { itemIndex ->
+                    if (itemIndex < pageWidgetIds.size) {
+                        val widgetId = pageWidgetIds[itemIndex]
+                        Box(Modifier.fillMaxWidth().height((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(320) ?: 132).dp)) {
+                            Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
+                                AndroidView(factory = { activity -> launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity) }, modifier = Modifier.fillMaxSize())
+                            }
+                            if (editingHome) Row(Modifier.align(Alignment.TopEnd).background(Color.White.copy(alpha = 0.85f), RoundedCornerShape(20.dp))) {
+                                TextButton(onClick = { launcherActivity?.resizeWidget(widgetId, -90) }) { Text("−") }
+                                TextButton(onClick = { launcherActivity?.removeWidget(widgetId) }) { Text("Quitar", color = Color(0xFFB3261E)) }
+                                TextButton(onClick = { launcherActivity?.resizeWidget(widgetId, 90) }) { Text("＋") }
+                            }
+                        }
+                    } else {
+                    val index = itemIndex - pageWidgetIds.size
+                    val app = homeSlots.getOrNull(index)
                     HomeAppCell(
                         app = app,
                         index = index,
@@ -351,7 +360,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 while (pages.size <= currentPage) pages.add(mutableListOf())
                                 val dest = pages[currentPage]
                                 while (dest.size < homeCapacity) dest.add("-")
-                                if (dest.size > homeCapacity) dest.subList(homeCapacity, dest.size).clear()
 
                                 val sourcePage = pages.indexOfFirst { it.contains(draggedPkg) }
                                 var canApplyDrop = true
@@ -394,9 +402,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             }
                         }
                     )
+                    }
                 }
-                        }
-
+            }
 
             if (homePages.size > 1 || editingHome) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.Center,
