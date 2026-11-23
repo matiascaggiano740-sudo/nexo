@@ -67,6 +67,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -133,14 +134,15 @@ fun Home() {
     val ctx = LocalContext.current
     val launcherActivity = ctx as? MainActivity
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
-    val defaultHomeApps = PRIORITY.mapNotNull { group ->
-        group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
-    }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
     var dockPackages by remember {
         mutableStateOf(ctx.getSharedPreferences("nexo_home", 0).getString("dock_packages", "")
             ?.takeIf { it.isNotBlank() }?.split("|") ?: emptyList())
     }
+    // Dock shortcuts are intentional launch points, but are not repeated in the home grid.
+    val defaultHomeApps = PRIORITY.mapNotNull { group ->
+        group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
+    }.filterNot { app -> app.pkg in dockPackages }
     var homePackages by remember {
         val prefs = ctx.getSharedPreferences("nexo_home", 0)
         val savedPages = prefs.getString("pages", "")?.takeIf { it.isNotBlank() }
@@ -348,9 +350,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     }
 
     val homeSlots: List<String?> = if (homePackages.isEmpty() && currentPage == 0) {
-        priority.map { it.pkg }
+        priority.filterNot { it.pkg in dockPackages }.map { it.pkg }
     } else {
-        homePackages.map { it.takeIf { value -> value != "-" } }
+        homePackages.map { token -> token.takeIf { value -> value != "-" && value !in dockPackages } }
     }
 
     val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
@@ -418,11 +420,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val firstAppCell = (headerCellCount + widgetCellOffset).coerceAtMost(28)
             val appEndCell = (28 - quoteCellCount).coerceAtLeast(firstAppCell)
             val pageCapacity = (appEndCell - firstAppCell).coerceAtLeast(0)
-            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) defaultHomeApps.size else homePackages.count { it != "-" }) + headerCellCount + quoteCellCount
+            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) defaultHomeApps.size else homePackages.count { it != "-" && it !in dockPackages }) + headerCellCount + quoteCellCount
             val widgetLayoutKey = launcherActivity?.hostedWidgetIds?.joinToString(",") { id ->
                 "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}"
             }.orEmpty()
-            LaunchedEffect(homePages, widgetLayoutKey, apps) {
+            LaunchedEffect(homePages, widgetLayoutKey, apps, dockPackages) {
                 if (apps.isEmpty()) return@LaunchedEffect
                 val widgetRowsByPage = launcherActivity?.hostedWidgetIds.orEmpty().groupBy { id ->
                     launcherActivity?.hostedWidgetPages?.get(id) ?: 0
@@ -431,7 +433,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     pages = homePages,
                     widgetRowsByPage = widgetRowsByPage,
                     defaultPackages = defaultHomeApps.map { it.pkg },
-                )
+                ).map { page -> page.map { token -> if (token in dockPackages) "-" else token } }
                 if (migrated != homePages) {
                     homePages = migrated
                     homePackages = migrated.getOrNull(currentPage).orEmpty()
@@ -672,7 +674,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             homePages = expanded
                             currentPage = expanded.lastIndex
                             homePackages = emptyList()
-                        })
+                        }, testTag = "add-home-page")
                         HomeEditAction("+ Carpeta", onClick = { showNewFolder = true })
                         Box {
                             HomeEditAction("Más", onClick = { showHomeMoreActions = true })
@@ -758,7 +760,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ) {
                     Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Buscar apps y web", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { drawer = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                        TextButton(onClick = { drawer = true }, modifier = Modifier.testTag("open-app-drawer"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                             Text("Apps", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -1315,7 +1317,7 @@ private fun HomeHeader(
             maxLines = 1,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.Light,
-            modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress)
+            modifier = Modifier.testTag("home-clock").combinedClickable(onClick = {}, onLongClick = onLongPress)
         )
         Text(date, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
@@ -1444,13 +1446,15 @@ fun AppIcon(
     onLaunch: () -> Unit = {},
     onLongPress: (() -> Unit)? = null,
     onContextMenu: (() -> Unit)? = null,
-    dragPayload: String? = null
+    dragPayload: String? = null,
+    testTag: String? = null
 ) {
     val ctx = LocalContext.current
     val dragView = LocalView.current
     val density = LocalDensity.current.density
     val iconModifier = Modifier
         .width(size + 12.dp)
+        .then(if (testTag == null) Modifier else Modifier.testTag(testTag))
         .combinedClickable(
             onClick = {
                 onLaunch()
@@ -1527,7 +1531,7 @@ private fun HomeEditOverview(
                 Text("Personalizar inicio", color = Cream, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Text("Deslizá entre páginas y elegí una para editar", color = Cream.copy(alpha = 0.68f), fontSize = 12.sp)
             }
-            TextButton(onClick = onClose, shape = RoundedCornerShape(22.dp)) {
+            TextButton(onClick = onClose, modifier = Modifier.testTag("finish-home-edit"), shape = RoundedCornerShape(22.dp)) {
                 Text("Listo", color = Color.White, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -1550,7 +1554,7 @@ private fun HomeEditOverview(
                     dateText = dateText,
                     weatherText = weatherText,
                     onClick = { onSelectPage(index) },
-                    modifier = Modifier.fillMaxHeight(0.94f).width(238.dp)
+                    modifier = Modifier.fillMaxHeight(0.94f).width(238.dp).testTag("page-preview-$index")
                 )
             }
         }
@@ -1564,7 +1568,7 @@ private fun HomeEditOverview(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 HomeEditActionCard("Widgets", "Agregar widgets", Modifier.weight(1f), onWidget)
                 HomeEditActionCard("Fondo", "Cambiar imagen", Modifier.weight(1f), onWallpaper)
-                HomeEditActionCard("+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage)
+                HomeEditActionCard("+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage, testTag = "add-home-page")
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 HomeEditActionCard("+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder)
@@ -1595,7 +1599,9 @@ private fun HomeMiniPagePreview(
     Surface(
         color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
         border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
-        modifier = modifier.clickable(onClick = onClick)
+        modifier = modifier.semantics {
+            contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it != "-" && it !in dockPackages }} apps"
+        }.clickable(onClick = onClick)
     ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
@@ -1672,13 +1678,15 @@ private fun HomeEditActionCard(
     subtitle: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
-    compact: Boolean = false
+    compact: Boolean = false,
+    testTag: String? = null
 ) {
     Surface(
         color = Color.White.copy(alpha = 0.095f),
         shape = RoundedCornerShape(17.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.11f)),
-        modifier = modifier.height(if (compact) 53.dp else 60.dp).clickable(onClick = onClick)
+        modifier = modifier.height(if (compact) 53.dp else 60.dp)
+            .then(if (testTag == null) Modifier else Modifier.testTag(testTag)).clickable(onClick = onClick)
     ) {
         Column(
             Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp),
@@ -1692,9 +1700,10 @@ private fun HomeEditActionCard(
 }
 
 @Composable
-private fun HomeEditAction(label: String, onClick: () -> Unit) {
+private fun HomeEditAction(label: String, onClick: () -> Unit, testTag: String? = null) {
     TextButton(
         onClick = onClick,
+        modifier = if (testTag == null) Modifier else Modifier.testTag(testTag),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         shape = RoundedCornerShape(22.dp)
     ) {
@@ -1717,7 +1726,7 @@ private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit
         }
     }
     Box(Modifier.size(40.dp)
-        .semantics { contentDescription = "Ir a la página ${page + 1}" }
+        .semantics { contentDescription = if (selected) "Ir a la página ${page + 1}, seleccionada" else "Ir a la página ${page + 1}" }
         .clickable(onClick = onSelect)
         .dragAndDropTarget(
             shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
@@ -1749,7 +1758,7 @@ private fun DockCell(
             ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
     ), contentAlignment = Alignment.Center) {
         if (app != null) AppIcon(app, 52.dp, Color.White, showLabel = false,
-            onLongPress = onLongPress, dragPayload = "dock:${app.pkg}")
+            onLongPress = onLongPress, dragPayload = "dock:${app.pkg}", testTag = "dock-app-${app.pkg}")
         if (editing && app != null) Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
             modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { onRemove() }) {
             Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 15.sp, lineHeight = 15.sp) }
@@ -1812,6 +1821,7 @@ private fun HomeAppCell(
                 app, iconSize, Color.White,
                 showLabel = cellHeight >= 64.dp,
                 labelFontSize = 11.sp,
+                testTag = "home-page-apps-$currentPage",
                 onLongPress = onLongPress,
                 dragPayload = "home:${app.pkg}"
             )
@@ -2074,7 +2084,7 @@ LaunchedEffect(apps) {
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TextButton(onClick = close, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
+        TextButton(onClick = close, modifier = Modifier.testTag("close-app-drawer"), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
             Text("Cerrar", color = Color.White, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.width(6.dp))
