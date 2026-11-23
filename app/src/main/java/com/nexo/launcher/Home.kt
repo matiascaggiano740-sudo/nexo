@@ -184,9 +184,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             Spacer(Modifier.height(16.dp))
             priority.chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    row.forEach { AppIcon(it, 60.dp, Color.White, onLongPress = { editingHome = true }) }
-
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        row.forEach { app ->
+            AppIcon(app, 60.dp, Color.White, onLongPress = { editingHome = true })
+        }
+    }
+            }
     AppIcon(it, 60.dp, Color.White, onLongPress = { editingHome = true })
                     }
     AppIcon(it, 60.dp, Color.White, onLongPress = { editingHome = true })
