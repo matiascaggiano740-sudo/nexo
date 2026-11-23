@@ -19,6 +19,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
@@ -53,6 +55,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -110,17 +113,23 @@ private val FOLDERS = listOf(
 @Composable
 fun Home() {
     val ctx = LocalContext.current
+    val launcherActivity = ctx as? MainActivity
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
-            var homePackages by remember {
-        mutableStateOf(
-            ctx.getSharedPreferences("nexo_home", 0)
-                .getString("packages", "")
-                                                ?.takeIf { it.isNotBlank() }
-                ?.split("|")
-                ?: emptyList()
-        )
+    var homePackages by remember {
+        val prefs = ctx.getSharedPreferences("nexo_home", 0)
+        val savedPages = prefs.getString("pages", "")?.takeIf { it.isNotBlank() }
+            ?.split("~")?.map { it.split("|").filter(String::isNotBlank) }
+        mutableStateOf(savedPages?.firstOrNull() ?: prefs.getString("packages", "")
+            ?.takeIf { it.isNotBlank() }?.split("|") ?: emptyList())
     }
+    var homePages by remember {
+        val prefs = ctx.getSharedPreferences("nexo_home", 0)
+        val savedPages = prefs.getString("pages", "")?.takeIf { it.isNotBlank() }
+            ?.split("~")?.map { it.split("|").filter(String::isNotBlank) }
+        mutableStateOf(savedPages ?: listOf(homePackages))
+    }
+    var currentPage by remember { mutableIntStateOf(0) }
     var homeCapacity by remember { mutableIntStateOf(0) }
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
     var drawer by remember { mutableStateOf(false) }
@@ -175,7 +184,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
     }
 
-    val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
+    val homeSlots: List<AppItem?> = if (homePackages.isEmpty() && currentPage == 0) {
         priority
     } else {
         homePackages.map { pkg ->
@@ -241,11 +250,38 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(16.dp))
+            launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }?.forEach { widgetId ->
+                Box(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth().height((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(260) ?: 132).dp)) {
+                        AndroidView(factory = { activity ->
+                            launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity)
+                        }, modifier = Modifier.fillMaxSize())
+                    }
+                    if (editingHome) TextButton(onClick = { launcherActivity?.removeWidget(widgetId) },
+                        modifier = Modifier.align(Alignment.TopEnd)) { Text("Quitar", color = Color(0xFFB3261E)) }
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .pointerInput(currentPage, homePages.size, editingHome) {
+                        if (!editingHome) {
+                            var accumulated = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, amount -> change.consume(); accumulated += amount },
+                                onDragEnd = {
+                                    if (accumulated < -55 && currentPage < homePages.lastIndex) {
+                                        currentPage++; homePackages = homePages.getOrNull(currentPage).orEmpty()
+                                    } else if (accumulated > 55 && currentPage > 0) {
+                                        currentPage--; homePackages = homePages.getOrNull(currentPage).orEmpty()
+                                    }
+                                }
+                            )
+                        }
+                    }
                     .onSizeChanged { size ->
                         val rows = size.height / homeRowHeightPx
                         homeCapacity = (rows * 4).coerceIn(0, 28)
@@ -264,9 +300,23 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = index,
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
+                        onRemove = { pkg ->
+                            val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
+                            val idx = slots.indexOf(pkg)
+                            if (idx >= 0) slots[idx] = "-"
+                            val updatedPages = homePages.toMutableList().apply {
+                                while (size <= currentPage) add(emptyList())
+                                this[currentPage] = slots
+                            }
+                            ctx.getSharedPreferences("nexo_home", 0).edit()
+                                .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
+                                .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") }).apply()
+                            homePages = updatedPages
+                            homePackages = slots
+                        },
                         onDrop = { draggedPkg, targetIndex ->
                             if (apps.any { it.pkg == draggedPkg } && targetIndex in 0 until homeCapacity) {
-                                val slots = (if (homePackages.isEmpty()) {
+                                val slots = (if (homePackages.isEmpty() && currentPage == 0) {
                                     priority.map { it.pkg }.toMutableList()
                                 } else {
                                     homePackages.toMutableList()
@@ -289,10 +339,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     }
                                 }
 
-                                ctx.getSharedPreferences("nexo_home", 0)
-                                    .edit()
-                                    .putString("packages", slots.joinToString("|"))
+                                val updatedPages = homePages.toMutableList().apply {
+                                    while (size <= currentPage) add(emptyList())
+                                    this[currentPage] = slots
+                                }
+                                ctx.getSharedPreferences("nexo_home", 0).edit()
+                                    .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
+                                    .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") })
                                     .apply()
+                                homePages = updatedPages
                                 homePackages = slots
                                 drawer = false
                             }
@@ -302,6 +357,41 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         }
 
 
+            if (homePages.size > 1 || editingHome) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    if (editingHome) TextButton(onClick = { launcherActivity?.launchWidgetPicker(currentPage) }) {
+                        Text("＋ Widget", color = Color.White)
+                    }
+                    if (editingHome) TextButton(onClick = {
+                        runCatching { ctx.startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) }
+                            .onFailure { Toast.makeText(ctx, "No se pudo abrir la selección de fondo", Toast.LENGTH_SHORT).show() }
+                    }) { Text("Fondo", color = Color.White) }
+                    if (editingHome) TextButton(onClick = {
+                        val expanded = (homePages + listOf(emptyList())).toMutableList()
+                        ctx.getSharedPreferences("nexo_home", 0).edit()
+                            .putString("pages", expanded.joinToString("~") { it.joinToString("|") }).apply()
+                        homePages = expanded
+                        currentPage = expanded.lastIndex
+                        homePackages = emptyList()
+                    }) { Text("＋ Página", color = Color.White) }
+                    homePages.indices.forEach { page ->
+                        TextButton(onClick = { currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() }) {
+                            Text(if (currentPage == page) "●" else "○", color = Color.White, fontSize = 12.sp)
+                        }
+                    }
+                    if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
+                    if (editingHome && currentPage > 0 && homePackages.isEmpty()) TextButton(onClick = {
+                        val reduced = homePages.toMutableList().also { it.removeAt(currentPage) }
+                        ctx.getSharedPreferences("nexo_home", 0).edit()
+                            .putString("pages", reduced.joinToString("~") { it.joinToString("|") })
+                            .putString("packages", reduced.firstOrNull().orEmpty().joinToString("|")).apply()
+                        homePages = reduced
+                        currentPage = (currentPage - 1).coerceAtLeast(0)
+                        homePackages = reduced.getOrNull(currentPage).orEmpty()
+                    }) { Text("− Página", color = Color.White) }
+                }
+            }
             if (folders.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().padding(bottom = 10.dp),
@@ -593,6 +683,7 @@ private fun HomeAppCell(
     index: Int,
     editingHome: Boolean,
     onLongPress: () -> Unit,
+    onRemove: (String) -> Unit,
     onDrop: (String, Int) -> Unit
 ) {
     val dropTarget = remember(editingHome, index, onDrop) {
@@ -636,6 +727,12 @@ private fun HomeAppCell(
                 onLongPress = onLongPress,
                 dragPayload = app.pkg
             )
+            if (editingHome) {
+                Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove(app.pkg) }) {
+                    Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 16.sp, lineHeight = 16.sp) }
+                }
+            }
         }
     }
 }
