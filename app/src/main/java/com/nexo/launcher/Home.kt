@@ -294,30 +294,40 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onLongPress = { editingHome = true },
                         onDrop = { draggedPkg, targetIndex ->
                             if (apps.any { it.pkg == draggedPkg }) {
-                                val current = if (homePackages.isEmpty()) {
+                                val slots = (if (homePackages.isEmpty()) {
                                     priority.map { it.pkg }
                                 } else {
                                     homePackages
+                                }).toMutableList()
+
+                                while (slots.size < homeCapacity) {
+                                    slots.add("-")
                                 }
 
-                                if (draggedPkg !in current && current.size >= homeCapacity) {
-                                    Toast.makeText(
-                                        ctx,
-                                        "No hay espacio libre en inicio",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    val updated = current.toMutableList()
-                                    updated.remove(draggedPkg)
-                                    updated.add(
-                                        targetIndex.coerceIn(0, updated.size),
-                                        draggedPkg
-                                    )
+                                if (targetIndex in slots.indices) {
+                                    val sourceIndex = slots.indexOf(draggedPkg)
+
+                                    if (sourceIndex >= 0) {
+                                        if (sourceIndex != targetIndex) {
+                                            val displaced = slots[targetIndex]
+                                            slots[targetIndex] = draggedPkg
+                                            slots[sourceIndex] = displaced
+                                        }
+                                    } else if (slots[targetIndex] == "-") {
+                                        slots[targetIndex] = draggedPkg
+                                    } else {
+                                        Toast.makeText(
+                                            ctx,
+                                            "Esa celda ya está ocupada",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+
                                     ctx.getSharedPreferences("nexo_home", 0)
                                         .edit()
-                                        .putString("packages", updated.joinToString("|"))
+                                        .putString("packages", slots.joinToString("|"))
                                         .apply()
-                                    homePackages = updated
+                                    homePackages = slots
                                     drawer = false
                                 }
                             }
