@@ -31,15 +31,24 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         widgetHost = AppWidgetHost(this, HOST_ID)
         val widgetPrefs = getSharedPreferences("nexo_widgets", MODE_PRIVATE)
-        hostedWidgetIds.addAll(widgetPrefs.getString("ids", "").orEmpty().split(",").mapNotNull { it.toIntOrNull() })
-        widgetPrefs.getString("pages", "").orEmpty().split(",").forEach { entry ->
+        val storedWidgetIds = widgetPrefs.getString("ids", "").orEmpty().split(",").mapNotNull { it.toIntOrNull() }
+        val storedWidgetPages = widgetPrefs.getString("pages", "").orEmpty().split(",").mapNotNull { entry ->
             val parts = entry.split(":")
-            if (parts.size == 2) parts[0].toIntOrNull()?.let { id -> parts[1].toIntOrNull()?.let { page -> hostedWidgetPages[id] = page } }
+            if (parts.size != 2) null else parts[0].toIntOrNull()?.let { id -> parts[1].toIntOrNull()?.let { id to it } }
+        }.toMap()
+        val manager = AppWidgetManager.getInstance(this)
+        storedWidgetIds.forEach { id ->
+            if (manager.getAppWidgetInfo(id) == null) {
+                widgetHost.deleteAppWidgetId(id)
+                widgetPrefs.edit().remove("height_$id").apply()
+            } else {
+                hostedWidgetIds.add(id)
+                hostedWidgetPages[id] = storedWidgetPages[id] ?: 0
+                widgetPrefs.getInt("height_$id", -1).takeIf { it > 0 }?.let { hostedWidgetHeights[id] = it }
+            }
         }
-        hostedWidgetIds.forEach { id ->
-            if (id !in hostedWidgetPages) hostedWidgetPages[id] = 0
-            widgetPrefs.getInt("height_$id", -1).takeIf { it > 0 }?.let { hostedWidgetHeights[id] = it }
-        }
+        widgetPrefs.edit().putString("ids", hostedWidgetIds.joinToString(","))
+            .putString("pages", hostedWidgetPages.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
         setContent { MaterialTheme { Home() } }
     }
 

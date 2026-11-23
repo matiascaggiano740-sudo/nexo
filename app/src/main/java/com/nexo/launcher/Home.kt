@@ -685,7 +685,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             existingFolderSlot in visibleRange -> existingFolderSlot
             reusableIndex in visibleRange -> reusableIndex
             emptySlot >= 0 -> emptySlot
-            targetPage.size < 28 -> (pageOffset + pageCellLimit).coerceAtMost(28).also { while (targetPage.size <= it) targetPage.add("-") }
+            targetPage.size < pageOffset + pageCellLimit -> maxOf(targetPage.size, pageOffset).also { slot -> while (targetPage.size <= slot) targetPage.add("-") }
             else -> -1
         }
         if (folderSlot < 0) {
