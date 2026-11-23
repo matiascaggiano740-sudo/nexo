@@ -1821,7 +1821,7 @@ private fun HomeAppCell(
                 app, iconSize, Color.White,
                 showLabel = cellHeight >= 64.dp,
                 labelFontSize = 11.sp,
-                testTag = "home-page-apps-$currentPage",
+                testTag = "home-page-app",
                 onLongPress = onLongPress,
                 dragPayload = "home:${app.pkg}"
             )
