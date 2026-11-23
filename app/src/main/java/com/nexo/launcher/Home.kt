@@ -109,8 +109,8 @@ fun Home() {
         mutableStateOf(
             ctx.getSharedPreferences("nexo_home", 0)
                 .getString("packages", "")
+                                                ?.takeIf { it.isNotBlank() }
                 ?.split("|")
-                ?.filter { it.isNotBlank() }
                 ?: emptyList()
         )
     }
@@ -119,7 +119,7 @@ fun Home() {
         var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
             var editingHome by remember { mutableStateOf(false) }
-    var packageRefresh by remember { mutableStateOf(0) }
+        var editingHome by remember { mutableStateOf(true) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -169,7 +169,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     } else {
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
         }
-        val folders = FOLDERS.mapNotNull { (name, pkgs) ->
+            val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
+        priority
+    } else {
+        homePackages.map { pkg ->
+            apps.firstOrNull { it.pkg == pkg }
+        }
+            }
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
         if (found.isEmpty()) null else name to found
     }
