@@ -29,8 +29,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -158,8 +156,7 @@ fun Home() {
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
-    var homeCapacity by remember { mutableIntStateOf(0) }
-    val homeRowHeightPx = with(LocalDensity.current) { 100.dp.roundToPx() }
+    var homeCapacity by remember { mutableIntStateOf(28) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
@@ -284,6 +281,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 val height = launcherActivity?.widgetHeightDp(id)?.coerceAtMost(320) ?: 132
                 ((height + 99) / 100).coerceAtLeast(1)
             }.coerceAtMost(7)
+            homeCapacity = (28 - widgetRows * 4).coerceIn(0, 28)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
@@ -303,12 +301,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 }
                             )
                         }
-                    }
-                    .onSizeChanged { size ->
-                        val rows = size.height / homeRowHeightPx
-                        homeCapacity = ((rows - widgetRows).coerceAtLeast(0) * 4).coerceIn(0, 28 - widgetRows * 4)
                     },
-                userScrollEnabled = false,
+                userScrollEnabled = true,
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -319,7 +313,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ) { itemIndex ->
                     if (itemIndex < pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex]
-                        Box(Modifier.fillMaxWidth().height((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(320) ?: 132).dp)) {
+                        val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(320) ?: 132) + 99) / 100).coerceAtLeast(1) * 100
+                        Box(Modifier.fillMaxWidth().height(widgetRowsHeight.dp)) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
                                 AndroidView(factory = { activity -> launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity) }, modifier = Modifier.fillMaxSize())
                             }
@@ -448,9 +443,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             if (userFolders.isNotEmpty() || editingHome) {
-                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    userFolders.take(4).forEach { (name, packages) ->
+                    userFolders.forEach { (name, packages) ->
                         val content = packages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             FolderIcon(name, content, 54.dp) { openFolder = "user:$name" }
