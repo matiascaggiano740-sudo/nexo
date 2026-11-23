@@ -58,6 +58,6 @@ dependencies {
 }
 
 // A release APK is built only after the real Kotlin home-grid tests pass.
-tasks.named("assembleRelease") {
-    dependsOn("testReleaseUnitTest")
+tasks.configureEach {
+    if (name == "assembleRelease") dependsOn("testReleaseUnitTest")
 }
