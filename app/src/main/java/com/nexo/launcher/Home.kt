@@ -588,9 +588,30 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         if (empty >= 0 && occupied < 28) page[empty] = "folder:$name"
         else if (page.size + pageWidgetRows * 4 < 28) page.add("folder:$name")
         else Toast.makeText(ctx, "No hay una celda libre para la carpeta", Toast.LENGTH_SHORT).show()
+        if (homePackages.isEmpty() && currentPage == 0 && page.isEmpty()) page.addAll(priority.map { it.pkg })
+        var reusableIndex = -1
+        pages.forEachIndexed { pageIndex, savedPage ->
+            savedPage.forEachIndexed { slotIndex, token ->
+                if (token in packages) {
+                    if (pageIndex == currentPage && reusableIndex < 0) reusableIndex = slotIndex
+                    savedPage[slotIndex] = "-"
+                }
+            }
+        }
+        val targetPage = pages[currentPage]
+        val emptySlot = targetPage.indexOfFirst { it == "-" }
+        val folderSlot = when {
+            reusableIndex >= 0 -> reusableIndex
+            emptySlot >= 0 -> emptySlot
+            targetPage.size < 28 -> targetPage.size.also { targetPage.add("-") }
+            else -> -1
+        }
+        if (folderSlot < 0) {
+            Toast.makeText(ctx, "No hay una celda libre para la carpeta", Toast.LENGTH_SHORT).show()
+        } else targetPage[folderSlot] = "folder:$name"
         val updatedFolders = userFolders.filterNot { it.first == name } + (name to packages)
         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-        homePages = pages.map { it.toList() }; homePackages = page.toList()
+        homePages = pages.map { it.toList() }; homePackages = homePages.getOrNull(currentPage).orEmpty()
         ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
         showNewFolder = false
     })
