@@ -68,7 +68,7 @@ import java.util.Locale
 
 private val Cream = Color(0xFFF3EEE4)
 private val Brown = Color(0xFF3A342C)
-p
+
 private val Glass = Color.White.copy(alpha = 0.20f)
 
 private val PRIORITY = listOf(
