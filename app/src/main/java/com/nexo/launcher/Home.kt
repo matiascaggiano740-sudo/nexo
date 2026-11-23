@@ -454,14 +454,22 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
         ) {
             Text(name, color = Brown, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(18.dp))
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                        Column(
+                Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
                 apps.chunked(3).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { AppIcon(it, 56.dp, Brown, onLaunch = close) }
                         repeat(3 - row.size) { Spacer(Modifier.width(68.dp)) }
                     }
                 }
-            @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun AppIcon(
     app: AppItem,
@@ -509,11 +517,6 @@ fun AppIcon(
         }
     }
 }
-        if (showLabel) Text(app.label, color = textColor, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
-    }
-}
-
 private val SOCIAL_PACKAGES = setOf(
     "com.whatsapp",
     "com.whatsapp.w4b",
