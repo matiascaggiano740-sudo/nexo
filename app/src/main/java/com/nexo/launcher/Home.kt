@@ -316,40 +316,53 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         },
                         onDrop = { draggedPkg, targetIndex ->
                             if (apps.any { it.pkg == draggedPkg } && targetIndex in 0 until homeCapacity) {
-                                val slots = (if (homePackages.isEmpty() && currentPage == 0) {
-                                    priority.map { it.pkg }.toMutableList()
-                                } else {
-                                    homePackages.toMutableList()
-                                })
-                                while (slots.size < homeCapacity) slots.add("-")
-                                if (slots.size > homeCapacity) slots.subList(homeCapacity, slots.size).clear()
+                                val pages = homePages.map { it.toMutableList() }.toMutableList()
+                                if (pages.isNotEmpty() && pages[0].isEmpty() && currentPage == 0) {
+                                    pages[0].addAll(priority.map { it.pkg })
+                                }
+                                while (pages.size <= currentPage) pages.add(mutableListOf())
+                                val dest = pages[currentPage]
+                                while (dest.size < homeCapacity) dest.add("-")
+                                if (dest.size > homeCapacity) dest.subList(homeCapacity, dest.size).clear()
 
-                                val sourceIndex = slots.indexOf(draggedPkg)
-                                if (sourceIndex >= 0) {
-                                    val displaced = slots[targetIndex]
-                                    slots[targetIndex] = draggedPkg
-                                    slots[sourceIndex] = displaced
+                                val sourcePage = pages.indexOfFirst { it.contains(draggedPkg) }
+                                var canApplyDrop = true
+                                if (sourcePage == currentPage) {
+                                    val sourceIndex = dest.indexOf(draggedPkg)
+                                    if (sourceIndex >= 0) {
+                                        val displaced = dest[targetIndex]
+                                        dest[targetIndex] = draggedPkg
+                                        dest[sourceIndex] = displaced
+                                    }
                                 } else {
-                                    val emptyIndex = slots.indexOfFirst { it == "-" }
-                                    if (emptyIndex < 0) {
-                                        Toast.makeText(ctx, "No hay espacio libre en inicio", Toast.LENGTH_SHORT).show()
+                                    val displaced = dest[targetIndex]
+                                    if (sourcePage >= 0) {
+                                        val sourceSlots = pages[sourcePage]
+                                        val sourceIndex = sourceSlots.indexOf(draggedPkg)
+                                        sourceSlots[sourceIndex] = if (displaced == "-") "-" else displaced
+                                        dest[targetIndex] = draggedPkg
                                     } else {
-                                        for (i in emptyIndex downTo targetIndex + 1) slots[i] = slots[i - 1]
-                                        slots[targetIndex] = draggedPkg
+                                        val emptyIndex = dest.indexOfFirst { it == "-" }
+                                        if (emptyIndex < 0) {
+                                            Toast.makeText(ctx, "No hay espacio libre en esta página", Toast.LENGTH_SHORT).show()
+                                            canApplyDrop = false
+                                        } else {
+                                            for (i in emptyIndex downTo targetIndex + 1) dest[i] = dest[i - 1]
+                                            dest[targetIndex] = draggedPkg
+                                        }
                                     }
                                 }
 
-                                val updatedPages = homePages.toMutableList().apply {
-                                    while (size <= currentPage) add(emptyList())
-                                    this[currentPage] = slots
+                                if (canApplyDrop) {
+                                    val updatedPages: List<List<String>> = pages.map { it.toList() }
+                                    ctx.getSharedPreferences("nexo_home", 0).edit()
+                                        .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
+                                        .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") })
+                                        .apply()
+                                    homePages = updatedPages
+                                    homePackages = dest.toList()
+                                    drawer = false
                                 }
-                                ctx.getSharedPreferences("nexo_home", 0).edit()
-                                    .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
-                                    .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") })
-                                    .apply()
-                                homePages = updatedPages
-                                homePackages = slots
-                                drawer = false
                             }
                         }
                     )
