@@ -36,9 +36,9 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
-import androidx.compose.ui.draganddrop.dragAndDropTarget
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
-import androidx.compose.ui.draganddrop.dragAndDropSource
+import androidx.compose.foundation.draganddrop.dragAndDropSource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -529,7 +529,7 @@ fun AppIcon(
 ) {
     val ctx = LocalContext.current
     val dragModifier = if (dragPayload != null) {
-        Modifier.dragAndDropSource { _ ->
+                Modifier.dragAndDropSource { _: androidx.compose.ui.geometry.Offset ->
             DragAndDropTransferData(
                 ClipData.newPlainText("nexo-app", dragPayload)
             )
