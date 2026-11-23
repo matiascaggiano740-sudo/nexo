@@ -185,14 +185,20 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val pages = homePages.map { it.toMutableList() }.toMutableList()
         while (pages.size <= currentPage) pages.add(mutableListOf())
         val page = pages[currentPage]
-        if (currentPage == 0 && page.isEmpty()) page.addAll(defaultHomeApps.map { it.pkg })
-        if (app.pkg in page) {
-            Toast.makeText(ctx, "La aplicación ya está en esta página", Toast.LENGTH_SHORT).show()
+        if (currentPage == 0 && page.isEmpty()) {
+            page.addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
+        }
+        val existingPage = pages.indexOfFirst { app.pkg in it }
+        if (existingPage >= 0) {
+            currentPage = existingPage
+            homePackages = pages[existingPage]
+            drawer = false
+            Toast.makeText(ctx, "La aplicación ya está en la página ${existingPage + 1}", Toast.LENGTH_SHORT).show()
             return
         }
         val occupiedWidgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
             ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
-        val firstAppCell = occupiedWidgetCells.coerceIn(0, 28)
+        val firstAppCell = (8 + occupiedWidgetCells).coerceIn(0, 28)
         while (page.size < 28) page.add("-")
         val appEndCell = (28 - if (currentPage == 0) 8 else 0).coerceAtLeast(firstAppCell)
         val slot = (firstAppCell until appEndCell).firstOrNull { page[it] == "-" }
@@ -392,42 +398,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
-            Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
-                fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light,
-                modifier = Modifier.padding(top = 4.dp).combinedClickable(onClick = {}, onLongClick = { editingHome = true }))
-            Text(date, color = Color.White, fontSize = 15.sp)
-                                    Spacer(Modifier.height(12.dp))
-            Surface(
-                color = Glass,
-                shape = RoundedCornerShape(22.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .clickable { editCity = true }
-            ) {
-                Row(
-                    Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        if (w != null) "${w.temp}°" else "--°",
-                        color = Color.White,
-                        fontSize = 28.sp,
-                        fontFamily = FontFamily.Serif
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                                                                        if (w != null) w.label + " · " + w.city
-                        else if (city.isBlank()) "Toca para elegir tu ciudad"
-                        else "Cargando clima...",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Spacer(Modifier.height(16.dp))
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val nativeWidgetRows = pageWidgetIds.sumOf { id ->
                 val height = launcherActivity?.widgetHeightDp(id) ?: 132
@@ -435,10 +405,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }.coerceAtMost(7)
             val quoteRows = if (currentPage == 0) 2 else 0
             val quoteItemCount = if (quoteRows > 0) 1 else 0
+            val headerCellCount = 8
             val widgetCellOffset = nativeWidgetRows * 4
             val quoteCellCount = quoteRows * 4
-            val pageCapacity = (28 - widgetCellOffset - quoteCellCount).coerceIn(0, 28)
-            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) priority.size else homePackages.count { it != "-" }) + quoteCellCount
+            val firstAppCell = (headerCellCount + widgetCellOffset).coerceAtMost(28)
+            val appEndCell = (28 - quoteCellCount).coerceAtLeast(firstAppCell)
+            val pageCapacity = (appEndCell - firstAppCell).coerceAtLeast(0)
+            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) defaultHomeApps.size else homePackages.count { it != "-" }) + headerCellCount + quoteCellCount
             val widgetLayoutKey = launcherActivity?.hostedWidgetIds?.joinToString(",") { id ->
                 "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}"
             }.orEmpty()
@@ -449,6 +422,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }.mapValues { (_, ids) -> ids.sumOf { id -> ((launcherActivity?.widgetHeightDp(id) ?: 132) + 99) / 100 } }
                 val sourcePages = homePages.ifEmpty { listOf(emptyList()) }
                 val migrated = mutableListOf<List<String>>()
+                val seenTokens = mutableSetOf<String>()
                 var carry = emptyList<String>()
                 var pageIndex = 0
                 while (pageIndex < sourcePages.size || carry.isNotEmpty()) {
@@ -456,11 +430,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     val source = if (pageIndex == 0 && savedPage.isEmpty()) defaultHomeApps.map { it.pkg } else savedPage
                     val widgetCells = ((widgetRowsByPage[pageIndex] ?: 0) * 4).coerceIn(0, 28)
                     val quoteCells = if (pageIndex == 0) 8 else 0
-                    val firstAvailable = widgetCells
+                    val firstAvailable = (8 + widgetCells).coerceAtMost(28)
                     val endAvailable = (28 - quoteCells).coerceAtLeast(firstAvailable)
                     val normalized = MutableList(28) { "-" }
-                    val tokens = source.filter { it.isNotBlank() && it != "-" }
-                    val hasReservedCellConflict = source.withIndex().any { (slot, token) ->
+                    val uniqueSource = source.mapIndexed { slot, token ->
+                        if (token.isNotBlank() && token != "-" && !seenTokens.add(token)) slot to "-" else slot to token
+                    }
+                    val tokens = uniqueSource.map { it.second }.filter { it.isNotBlank() && it != "-" }
+                    val hasReservedCellConflict = uniqueSource.any { (slot, token) ->
                         token.isNotBlank() && token != "-" && slot !in firstAvailable until endAvailable
                     }
                     val remaining = mutableListOf<String>()
@@ -471,8 +448,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             if (free == null) remaining += token else normalized[free] = token
                         }
                     } else {
-                        source.forEachIndexed { slot, token ->
-                            if (token.isNotBlank() && token != "-") normalized[slot] = token
+                        uniqueSource.forEach { (slot, token) ->
+                            if (slot in 0 until 28 && token.isNotBlank() && token != "-") normalized[slot] = token
                         }
                     }
                     carry = remaining
@@ -490,7 +467,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val gridGap = 8.dp
                 val cellHeight = ((maxHeight - gridGap * 6) / 7).coerceAtLeast(1.dp)
-                val quoteHeight = cellHeight * quoteRows + if (quoteRows > 0) gridGap else 0.dp
+                val quoteHeight = cellHeight * quoteRows
+                val headerHeight = cellHeight * 2
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     modifier = Modifier.fillMaxSize(),
@@ -499,18 +477,29 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     verticalArrangement = Arrangement.spacedBy(gridGap)
                 ) {
                     items(
-                        count = pageWidgetIds.size + pageCapacity + quoteItemCount,
+                        count = 1 + pageWidgetIds.size + pageCapacity + quoteItemCount,
                         key = { index ->
                             when {
-                                index < pageWidgetIds.size -> "widget-${pageWidgetIds[index]}"
-                                quoteItemCount > 0 && index == pageWidgetIds.size + pageCapacity -> "quote-widget-page-0"
-                                else -> "home-cell-${index - pageWidgetIds.size}"
+                                index == 0 -> "home-header-page-$currentPage"
+                                index <= pageWidgetIds.size -> "widget-${pageWidgetIds[index - 1]}"
+                                quoteItemCount > 0 && index == 1 + pageWidgetIds.size + pageCapacity -> "quote-widget-page-0"
+                                else -> "home-cell-${index - 1 - pageWidgetIds.size}"
                             }
                         },
-                        span = { index -> if (index < pageWidgetIds.size || (quoteItemCount > 0 && index == pageWidgetIds.size + pageCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
+                        span = { index -> if (index == 0 || index in 1..pageWidgetIds.size || (quoteItemCount > 0 && index == 1 + pageWidgetIds.size + pageCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
                     ) { itemIndex ->
-                    if (itemIndex < pageWidgetIds.size) {
-                        val widgetId = pageWidgetIds[itemIndex]
+                    if (itemIndex == 0) {
+                        HomeHeader(
+                            now = now,
+                            date = date,
+                            weather = w,
+                            city = city,
+                            modifier = Modifier.fillMaxWidth().height(headerHeight),
+                            onLongPress = { editingHome = true },
+                            onWeatherClick = { editCity = true }
+                        )
+                    } else if (itemIndex <= pageWidgetIds.size) {
+                        val widgetId = pageWidgetIds[itemIndex - 1]
                         var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
                         val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId) ?: 132) + 99) / 100).coerceAtLeast(1)
                         Box(Modifier.fillMaxWidth().height(cellHeight * widgetRowsHeight + gridGap * (widgetRowsHeight - 1))) {
@@ -524,7 +513,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     DropdownMenu(expanded = showWidgetPageMenu, onDismissRequest = { showWidgetPageMenu = false }) {
                                         homePages.indices.forEach { destination -> DropdownMenuItem(
                                             text = { Text("Página ${destination + 1}") },
-                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) defaultHomeApps.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
+                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) defaultHomeApps.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + 8 + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
                                         ) }
                                     }
                                 }
@@ -534,12 +523,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }) { Text("↓") }
                             }
                         }
-                    } else if (quoteItemCount > 0 && itemIndex == pageWidgetIds.size + pageCapacity) {
-                        QuoteCard(quote, photo, onClick = { editCard = true }, height = quoteHeight,
-                            modifier = Modifier.fillMaxWidth())
+                    } else if (quoteItemCount > 0 && itemIndex == 1 + pageWidgetIds.size + pageCapacity) {
+                        Box(Modifier.fillMaxWidth().height(quoteHeight), contentAlignment = Alignment.Center) {
+                            QuoteCard(quote, photo, onClick = { editCard = true },
+                                height = minOf(quoteHeight, 150.dp), modifier = Modifier.fillMaxWidth())
+                        }
                     } else {
-                    val index = itemIndex - pageWidgetIds.size
-                    val logicalIndex = index + widgetCellOffset
+                    val index = itemIndex - 1 - pageWidgetIds.size
+                    val logicalIndex = index + firstAppCell
                     val slot = homeSlots.getOrNull(logicalIndex)
                     val folderName = slot?.takeIf { it.startsWith("folder:") }?.removePrefix("folder:")
                     val folderApps = folderName?.let { name -> userFolders.find { it.first == name }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } } }.orEmpty()
@@ -553,7 +544,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = logicalIndex,
                         editingHome = editingHome,
                         cellHeight = cellHeight,
-                        iconSize = (cellHeight - if (cellHeight >= 58.dp) 18.dp else 4.dp).coerceIn(40.dp, 56.dp),
+                        iconSize = (cellHeight - 22.dp).coerceIn(48.dp, 60.dp),
                         onLongPress = { editingHome = true },
                         onDoubleTapEmpty = {
                             if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
@@ -585,10 +576,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             val draggedFolderName = draggedPkg.removePrefix("folder:").takeIf { draggedPkg.startsWith("folder:") }
                             val draggedFolder = draggedFolderName?.let { name -> userFolders.find { it.first == name } }
                             val draggedAllowed = if (draggedFolderName != null) draggedFolder != null else apps.any { it.pkg == draggedPkg }
-                            if (draggedAllowed && targetIndex in widgetCellOffset until (widgetCellOffset + pageCapacity)) {
+                            if (draggedAllowed && targetIndex in firstAppCell until (firstAppCell + pageCapacity)) {
                                 val pages = homePages.map { it.toMutableList() }.toMutableList()
                                 if (pages.isNotEmpty() && pages[0].isEmpty()) {
-                                    pages[0].addAll(defaultHomeApps.map { it.pkg })
+                                    pages[0].addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
                                 }
                                 while (pages.size <= currentPage) pages.add(mutableListOf())
                                 val dest = pages[currentPage]
@@ -728,15 +719,24 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 val valid = isFolder || apps.any { it.pkg == token }
                                 if (valid && page in homePages.indices) {
                                     val pages = homePages.map { it.toMutableList() }.toMutableList()
-                                    if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(defaultHomeApps.map { it.pkg })
+                                    if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
                                     val sourcePage = pages.indexOfFirst { token in it }
                                     val dest = pages[page]
                                     val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
                                         ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
-                                    val appStart = widgetCells.coerceAtMost(28)
+                                    val appStart = (8 + widgetCells).coerceAtMost(28)
                                     val appEnd = (28 - if (page == 0) 8 else 0).coerceAtLeast(appStart)
                                     if (token in dest) {
-                                        currentPage = page; homePackages = dest.toList()
+                                        if (sourcePage >= 0 && sourcePage != page) {
+                                            val duplicateIndex = pages[sourcePage].indexOf(token)
+                                            if (duplicateIndex >= 0) pages[sourcePage][duplicateIndex] = "-"
+                                            val saved = pages.map { it.toList() }
+                                            ctx.getSharedPreferences("nexo_home", 0).edit()
+                                                .putString("packages", saved.firstOrNull().orEmpty().joinToString("|"))
+                                                .putString("pages", saved.joinToString("~") { it.joinToString("|") }).apply()
+                                            homePages = saved
+                                        }
+                                        currentPage = page; homePackages = pages[page].toList()
                                     } else {
                                         while (dest.size < 28) dest.add("-")
                                         val free = (appStart until appEnd).firstOrNull { dest.getOrNull(it) == "-" }
@@ -859,7 +859,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
-                    val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) priority.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + if (currentPage == 0) 8 else 0
+                    val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) defaultHomeApps.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + 8 + if (currentPage == 0) 8 else 0
                     editingHome = false
                     launcherActivity?.launchWidgetPicker(currentPage, count)
                 },
@@ -1055,7 +1055,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     if (showNewFolder) UserFolderDialog(apps, null, onDismiss = { showNewFolder = false }, onSave = { name, packages ->
         val pages = homePages.map { it.toMutableList() }.toMutableList()
         while (pages.size <= currentPage) pages.add(mutableListOf())
-        if (currentPage == 0 && pages[0].isEmpty()) pages[0].addAll(defaultHomeApps.map { it.pkg })
+        if (currentPage == 0 && pages[0].isEmpty()) pages[0].addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
         var existingFolderSlot = -1
         pages.forEachIndexed { pageIndex, savedPage -> savedPage.forEachIndexed { slotIndex, token ->
             if (token == "folder:$name") {
@@ -1064,7 +1064,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
         } }
         val page = pages[currentPage]
-        if (page.isEmpty() && currentPage == 0) page.addAll(defaultHomeApps.map { it.pkg })
+        if (page.isEmpty() && currentPage == 0) page.addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
         var reusableIndex = -1
         pages.forEachIndexed { pageIndex, savedPage ->
             savedPage.forEachIndexed { slotIndex, token ->
@@ -1078,7 +1078,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val pageWidgetArea = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
             ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
         val quoteCellArea = if (currentPage == 0) 8 else 0
-        val pageOffset = pageWidgetArea.coerceAtMost(28)
+        val pageOffset = (8 + pageWidgetArea).coerceAtMost(28)
         val pageCellLimit = (28 - pageOffset - quoteCellArea).coerceAtLeast(0)
         val visibleRange = pageOffset until (28 - quoteCellArea).coerceAtLeast(pageOffset)
         val emptyRelative = targetPage.drop(pageOffset).take(pageCellLimit).indexOfFirst { it == "-" }
@@ -1087,7 +1087,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             existingFolderSlot in visibleRange -> existingFolderSlot
             reusableIndex in visibleRange -> reusableIndex
             emptySlot >= 0 -> emptySlot
-            targetPage.size < pageOffset + pageCellLimit -> maxOf(targetPage.size, pageOffset).also { slot -> while (targetPage.size <= slot) targetPage.add("-") }
+            pageCellLimit > 0 && targetPage.size < pageOffset + pageCellLimit -> maxOf(targetPage.size, pageOffset).also { slot -> while (targetPage.size <= slot) targetPage.add("-") }
             else -> -1
         }
         if (folderSlot < 0) {
@@ -1313,6 +1313,47 @@ private fun HomeAppsDialog(
 }
 
 @Composable
+private fun HomeHeader(
+    now: LocalDateTime,
+    date: String,
+    weather: WeatherInfo?,
+    city: String,
+    modifier: Modifier = Modifier,
+    onLongPress: () -> Unit,
+    onWeatherClick: () -> Unit
+) {
+    Column(modifier.padding(top = 2.dp)) {
+        Text(
+            now.format(DateTimeFormatter.ofPattern("HH:mm")),
+            color = Color.White,
+            fontSize = 76.sp,
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Light,
+            modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress)
+        )
+        Text(date, color = Color.White, fontSize = 15.sp)
+        Spacer(Modifier.height(7.dp))
+        Surface(
+            color = Glass,
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable(onClick = onWeatherClick)
+        ) {
+            Row(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(weather?.let { "${it.temp}°" } ?: "--°", color = Color.White, fontSize = 28.sp, fontFamily = FontFamily.Serif)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    weather?.let { "${it.label} · ${it.city}" } ?: if (city.isBlank()) "Toca para elegir tu ciudad" else "Cargando clima...",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun QuoteCard(
     text: String,
     photo: ImageBitmap?,
@@ -1513,7 +1554,7 @@ private fun HomeEditOverview(
                 HomeMiniPagePreview(
                     index = index,
                     selected = index == currentPage,
-                    packages = if (index == 0 && page.isEmpty()) defaultPackages else page,
+                    packages = if (index == 0 && page.isEmpty()) List(8) { "-" } + defaultPackages else page,
                     apps = apps,
                     folders = folders,
                     dockPackages = dockPackages,
@@ -1583,10 +1624,10 @@ private fun HomeMiniPagePreview(
             }
             Spacer(Modifier.height(7.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                repeat(7) { row ->
+                repeat(if (index == 0) 3 else 5) { row ->
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         repeat(4) { column ->
-                            val slot = row * 4 + column
+                            val slot = 8 + row * 4 + column
                             val token = packages.getOrNull(slot)?.takeIf { it != "-" }
                             val folderName = token?.removePrefix("folder:")?.takeIf { token.startsWith("folder:") }
                             val folderApps = folderName?.let { key -> folders.find { it.first == key }?.second.orEmpty() }.orEmpty()
@@ -1781,8 +1822,8 @@ private fun HomeAppCell(
         if (app != null) {
             AppIcon(
                 app, iconSize, Color.White,
-                showLabel = cellHeight >= 58.dp,
-                labelFontSize = if (cellHeight < 68.dp) 10.sp else 11.sp,
+                showLabel = cellHeight >= 64.dp,
+                labelFontSize = 11.sp,
                 onLongPress = onLongPress,
                 dragPayload = "home:${app.pkg}"
             )
