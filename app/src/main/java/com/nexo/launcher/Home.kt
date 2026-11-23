@@ -343,6 +343,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         .replaceFirstChar { it.uppercase() }
     val w = weather
 
+    var pageSwipeX by remember { mutableFloatStateOf(0f) }
+    val pageSwipeScope = rememberCoroutineScope()
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
@@ -362,41 +364,48 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     }
                 } else Modifier
             )
-    ) {
-        val pageSwipeOffset = remember { Animatable(0f) }
-        val pageSwipeScope = rememberCoroutineScope()
-        Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)
-                .graphicsLayer { translationX = pageSwipeOffset.value }
-                .pointerInput(homePages.size, editingHome) {
-                    if (!editingHome && homePages.size > 1) {
-                        detectHorizontalDragGestures(
-                            onHorizontalDrag = { change, amount ->
-                                change.consume()
-                                pageSwipeScope.launch { pageSwipeOffset.snapTo(pageSwipeOffset.value + amount) }
-                            },
-                            onDragEnd = {
-                                val direction = when {
-                                    pageSwipeOffset.value < -55f && currentPage < homePages.lastIndex -> 1
-                                    pageSwipeOffset.value > 55f && currentPage > 0 -> -1
-                                    else -> 0
-                                }
-                                pageSwipeScope.launch {
-                                    if (direction != 0) {
-                                        val width = size.width.toFloat()
-                                        pageSwipeOffset.animateTo(if (direction > 0) -width else width, tween(180))
-                                        val nextPage = currentPage + direction
-                                        currentPage = nextPage
-                                        homePackages = homePages.getOrNull(nextPage).orEmpty()
-                                        pageSwipeOffset.snapTo(if (direction > 0) width else -width)
-                                    }
-                                    pageSwipeOffset.animateTo(0f, tween(180))
-                                }
+            .graphicsLayer { translationX = pageSwipeX }
+            .pointerInput(homePages.size, editingHome, drawer) {
+                if (!editingHome && !drawer && homePages.size > 1) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            pageSwipeX += amount
+                        },
+                        onDragCancel = {
+                            val dragStart = pageSwipeX
+                            pageSwipeScope.launch {
+                                Animatable(dragStart).animateTo(0f, tween(180)) { pageSwipeX = value }
                             }
-                        )
-                    }
+                        },
+                        onDragEnd = {
+                            val dragStart = pageSwipeX
+                            val direction = when {
+                                dragStart < -55f && currentPage < homePages.lastIndex -> 1
+                                dragStart > 55f && currentPage > 0 -> -1
+                                else -> 0
+                            }
+                            val width = size.width.toFloat()
+                            pageSwipeScope.launch {
+                                val animation = Animatable(dragStart)
+                                if (direction != 0) {
+                                    animation.animateTo(if (direction > 0) -width else width, tween(180)) {
+                                        pageSwipeX = value
+                                    }
+                                    val nextPage = currentPage + direction
+                                    currentPage = nextPage
+                                    homePackages = homePages.getOrNull(nextPage).orEmpty()
+                                    animation.snapTo(if (direction > 0) width else -width)
+                                    pageSwipeX = animation.value
+                                }
+                                animation.animateTo(0f, tween(180)) { pageSwipeX = value }
+                            }
+                        }
+                    )
                 }
-        ) {
+            }
+    ) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light,
                 modifier = Modifier.padding(top = 4.dp).combinedClickable(onClick = {}, onLongClick = { editingHome = true }))
@@ -720,8 +729,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(4.dp))
-            QuoteCard(quote, photo) { editCard = true }
-            Spacer(Modifier.height(12.dp))
+            if (currentPage == 0) {
+                QuoteCard(quote, photo) { editCard = true }
+                Spacer(Modifier.height(12.dp))
+            }
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
@@ -1238,7 +1249,7 @@ fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                     apps.take(4).chunked(2).forEach { r ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            r.forEach { item -> Image(item.icon, null, if (item.usesThemeAsset) Modifier.size(20.dp) else Modifier.size(20.dp).clip(RoundedCornerShape(6.dp))) }
+                            r.forEach { item -> Image(item.icon, null, Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop) }
                         }
                     }
                 }
@@ -1339,7 +1350,7 @@ fun AppIcon(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(size)) {
-            Image(app.icon, app.label, if (app.usesThemeAsset) Modifier.fillMaxSize() else Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)))
+            Image(app.icon, app.label, Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)), contentScale = ContentScale.Crop)
         }
         if (showLabel) {
             Text(

@@ -30,20 +30,6 @@ fun decodeThemeIcon(context: Context, resourceId: Int): ImageBitmap? = runCatchi
 fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (theme) {
     IconTheme.ORIGINAL -> null
     IconTheme.CRAYON -> when (packageName) {
-        "com.instagram.barcelona" -> R.drawable.icon_crayon_threads
-        "com.zhiliaoapp.musically" -> R.drawable.icon_crayon_tiktok
-        "com.spotify.music" -> R.drawable.icon_crayon_spotify
-        "com.facebook.katana" -> R.drawable.icon_crayon_facebook
-        "com.facebook.orca" -> R.drawable.icon_crayon_messenger
-        "com.whatsapp" -> R.drawable.icon_crayon_whatsapp
-        "com.android.settings" -> R.drawable.icon_crayon_settings
-        "com.google.android.googlequicksearchbox" -> R.drawable.icon_crayon_google
-        "com.google.android.dialer", "com.android.dialer", "com.miui.dialer" -> R.drawable.icon_crayon_phone
-        "com.android.camera", "com.miui.camera", "com.android.camera2" -> R.drawable.icon_crayon_camera
-        "com.google.android.calendar", "com.android.calendar" -> R.drawable.icon_crayon_calendar
-        else -> null
-    }
-    IconTheme.LIQUID_GLASS -> when (packageName) {
         "com.android.chrome" -> R.drawable.icon_liquid_chrome
         "com.openai.chatgpt" -> R.drawable.icon_liquid_chatgpt
         "com.google.android.googlequicksearchbox" -> R.drawable.icon_liquid_google
@@ -63,6 +49,20 @@ fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (them
         "com.google.android.gm" -> R.drawable.icon_liquid_gmail
         "com.google.android.calendar" -> R.drawable.icon_liquid_calendar
         "com.google.android.calculator", "com.android.calculator2", "com.miui.calculator" -> R.drawable.icon_liquid_calculator
+        else -> null
+    }
+    IconTheme.LIQUID_GLASS -> when (packageName) {
+        "com.instagram.barcelona" -> R.drawable.icon_crayon_threads
+        "com.zhiliaoapp.musically" -> R.drawable.icon_crayon_tiktok
+        "com.spotify.music" -> R.drawable.icon_crayon_spotify
+        "com.facebook.katana" -> R.drawable.icon_crayon_facebook
+        "com.facebook.orca" -> R.drawable.icon_crayon_messenger
+        "com.whatsapp" -> R.drawable.icon_crayon_whatsapp
+        "com.android.settings" -> R.drawable.icon_crayon_settings
+        "com.google.android.googlequicksearchbox" -> R.drawable.icon_crayon_google
+        "com.google.android.dialer", "com.android.dialer", "com.miui.dialer" -> R.drawable.icon_crayon_phone
+        "com.android.camera", "com.miui.camera", "com.android.camera2" -> R.drawable.icon_crayon_camera
+        "com.google.android.calendar", "com.android.calendar" -> R.drawable.icon_crayon_calendar
         else -> null
     }
 }
