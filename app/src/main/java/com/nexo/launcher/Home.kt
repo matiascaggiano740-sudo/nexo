@@ -18,6 +18,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -1003,7 +1004,8 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit, onEdit: ((
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.padding(horizontal = 28.dp).clip(RoundedCornerShape(32.dp)).background(Cream.copy(alpha = 0.95f))
+            Modifier.padding(horizontal = 28.dp).clip(RoundedCornerShape(32.dp)).background(Cream.copy(alpha = 0.86f))
+                .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(32.dp))
                 .pointerInput(Unit) { detectTapGestures { } }.padding(22.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
