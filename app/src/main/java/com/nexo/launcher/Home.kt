@@ -366,6 +366,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
                             val idx = slots.indexOf(pkg)
                             if (idx >= 0) slots[idx] = "-"
+                            if (pkg.startsWith("folder:")) {
+                                val removedName = pkg.removePrefix("folder:")
+                                userFolders = userFolders.filterNot { it.first == removedName }
+                                writeUserFolders(ctx, userFolders)
+                            }
                             val updatedPages = homePages.toMutableList().apply {
                                 while (size <= currentPage) add(emptyList())
                                 this[currentPage] = slots
@@ -377,7 +382,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             homePackages = slots
                         },
                         onDrop = { draggedPkg, targetIndex ->
-                            if (apps.any { it.pkg == draggedPkg } && targetIndex in 0 until homeCapacity) {
+                            val draggedFolderName = draggedPkg.removePrefix("folder:").takeIf { draggedPkg.startsWith("folder:") }
+                            val draggedFolder = draggedFolderName?.let { name -> userFolders.find { it.first == name } }
+                            val draggedAllowed = if (draggedFolderName != null) draggedFolder != null else apps.any { it.pkg == draggedPkg }
+                            if (draggedAllowed && targetIndex in 0 until homeCapacity) {
                                 val pages = homePages.map { it.toMutableList() }.toMutableList()
                                 if (pages.isNotEmpty() && pages[0].isEmpty()) {
                                     pages[0].addAll(priority.map { it.pkg })
@@ -393,16 +401,30 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     canApplyDrop = false
                                 } else if (target?.startsWith("folder:") == true) {
                                     val folderName = target.removePrefix("folder:")
-                                    val oldFolder = userFolders.find { it.first == folderName }
-                                    if (oldFolder != null && draggedPkg !in oldFolder.second) {
-                                        val updatedFolders = userFolders.map { if (it.first == folderName) it.first to (it.second + draggedPkg) else it }
+                                    val targetFolder = userFolders.find { it.first == folderName }
+                                    if (targetFolder != null) {
+                                        val addPackages = draggedFolder?.second ?: listOf(draggedPkg)
+                                        val updatedFolders = userFolders.map { folder ->
+                                            when (folder.first) {
+                                                folderName -> folder.first to (folder.second + addPackages).distinct()
+                                                draggedFolderName -> folder.first to folder.second
+                                                else -> folder
+                                            }
+                                        }.filterNot { draggedFolderName != null && it.first == draggedFolderName }
                                         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
                                         if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
                                     }
                                 } else if (target != null && target != "-") {
                                     val existingApp = apps.firstOrNull { it.pkg == target }
                                     val draggedApp = apps.firstOrNull { it.pkg == draggedPkg }
-                                    if (existingApp != null && draggedApp != null) {
+                                    if (draggedFolder != null && existingApp != null) {
+                                        val updatedFolders = userFolders.map { folder ->
+                                            if (folder.first == draggedFolder.first) folder.first to (folder.second + existingApp.pkg).distinct() else folder
+                                        }
+                                        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
+                                        dest[targetIndex] = draggedPkg
+                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
+                                    } else if (existingApp != null && draggedApp != null) {
                                         var folderName = "Carpeta"
                                         var suffix = 1
                                         while (userFolders.any { it.first == folderName }) { folderName = "Carpeta $suffix"; suffix++ }
@@ -770,8 +792,15 @@ fun QuoteCard(text: String, photo: ImageBitmap?, onClick: () -> Unit) {
 }
 
 @Composable
-fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit) {
-    Column(Modifier.width(size + 12.dp).clickable { onClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
+fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit, dragPayload: String? = null) {
+    val dragView = LocalView.current
+    val density = LocalDensity.current.density
+    Column(Modifier.width(size + 12.dp).combinedClickable(onClick = onClick, onLongClick = {
+        if (dragPayload != null && apps.isNotEmpty()) {
+            val clip = ClipData.newPlainText("nexo-folder", dragPayload)
+            dragView.startDragAndDrop(clip, AppIconDragShadowBuilder(dragView, apps.first().icon.asAndroidBitmap(), (size.value * density).toInt().coerceAtLeast(48)), dragPayload, View.DRAG_FLAG_GLOBAL)
+        }
+    }), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(7.dp)) {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                 apps.take(4).chunked(2).forEach { r ->
@@ -940,7 +969,7 @@ private fun HomeAppCell(
                 }
             }
         } else if (folderName != null) {
-            FolderIcon(folderName, folderApps, 56.dp, onFolderClick)
+            FolderIcon(folderName, folderApps, 56.dp, onFolderClick, dragPayload = "folder:$folderName")
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove("folder:$folderName") }) {
