@@ -162,15 +162,16 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
     }
 
-    val folders = FOLDERS.mapNotNull { (name, pkgs) ->
+        val folders = FOLDERS.mapNotNull { (name, pkgs) ->
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
-            val homeDropTarget = remember(editingHome, homePackages, priority, apps) {
-        object :             .dragAndDropTarget(
-                shouldStartDragAndDrop = { event ->
-                    editingHome && event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
-                },
-                target = homeDropTarget
-            )
+        if (found.isEmpty()) null else name to found
+    }
+    val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
+        .replaceFirstChar { it.uppercase() }
+    val w = weather
+
+    val homeDropTarget = remember(editingHome, homePackages, priority, apps) {
+        object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 if (!editingHome) return false
 
@@ -180,10 +181,16 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 val pkg = clip.getItemAt(0).text?.toString() ?: return false
                 if (apps.none { it.pkg == pkg }) return false
 
-                val current = if (homePackages.isEmpty()) priority.map { it.pkg } else homePackages
+                val current = if (homePackages.isEmpty()) {
+                    priority.map { it.pkg }
+                } else {
+                    homePackages
+                }
+
                 if (pkg !in current) {
                     val updated = current + pkg
-                    ctx.getSharedPreferences("nexo_home", 0).edit()
+                    ctx.getSharedPreferences("nexo_home", 0)
+                        .edit()
                         .putString("packages", updated.joinToString("|"))
                         .apply()
                     homePackages = updated
@@ -193,17 +200,22 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 return true
             }
         }
-            }
-        if (found.isEmpty()) null else name to found
     }
-    val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
-        .replaceFirstChar { it.uppercase() }
-    val w = weather
 
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
-            .pointerInput(Unit) { detectVerticalDragGestures { _, dy -> if (dy < -25) drawer = true } }
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dy ->
+                    if (dy < -25) drawer = true
+                }
+            }
+            .dragAndDropTarget(
+                shouldStartDragAndDrop = { event ->
+                    editingHome && event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                },
+                target = homeDropTarget
+            )
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
