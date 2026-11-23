@@ -429,7 +429,7 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit) {
         }
     }
 }
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppIcon(
     app: AppItem,
