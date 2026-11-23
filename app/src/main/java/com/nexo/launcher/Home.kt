@@ -217,6 +217,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
+                        .pointerInput(Unit) {
+                detectTapGestures(onLongPress = { editHome = true })
+            }
+
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dy ->
                     if (dy < -25) drawer = true
