@@ -1326,25 +1326,25 @@ private fun HomeHeader(
         Text(
             now.format(DateTimeFormatter.ofPattern("HH:mm")),
             color = Color.White,
-            fontSize = 76.sp,
+            fontSize = 64.sp,
             fontFamily = FontFamily.Serif,
             fontWeight = FontWeight.Light,
             modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress)
         )
-        Text(date, color = Color.White, fontSize = 15.sp)
-        Spacer(Modifier.height(7.dp))
+        Text(date, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(4.dp))
         Surface(
             color = Glass,
             shape = RoundedCornerShape(22.dp),
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).clickable(onClick = onWeatherClick)
         ) {
-            Row(Modifier.padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(weather?.let { "${it.temp}°" } ?: "--°", color = Color.White, fontSize = 28.sp, fontFamily = FontFamily.Serif)
+            Row(Modifier.padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(weather?.let { "${it.temp}°" } ?: "--°", color = Color.White, fontSize = 24.sp, fontFamily = FontFamily.Serif)
                 Spacer(Modifier.width(12.dp))
                 Text(
                     weather?.let { "${it.label} · ${it.city}" } ?: if (city.isBlank()) "Toca para elegir tu ciudad" else "Cargando clima...",
                     color = Color.White,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
