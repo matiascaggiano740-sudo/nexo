@@ -629,26 +629,32 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 dock = updated.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
                             },
                             onDrop = { payload ->
-                                val fromHome = payload.startsWith("home:")
                                 val fromDock = payload.startsWith("dock:")
                                 val pkg = payload.removePrefix("home:").removePrefix("dock:")
                                 if (apps.any { it.pkg == pkg }) {
+                                    val originalTarget = dockPackages.getOrNull(dockIndex) ?: "-"
                                     val updated = dockPackages.toMutableList().apply { while (size < 4) add("-") }
-                                    val sourceIndex = updated.indexOf(pkg)
-                                    if (sourceIndex >= 0 && sourceIndex != dockIndex) {
+                                    val sourceDockIndex = updated.indexOf(pkg)
+                                    if (sourceDockIndex >= 0 && sourceDockIndex != dockIndex) {
                                         val displaced = updated[dockIndex]
                                         updated[dockIndex] = pkg
-                                        updated[sourceIndex] = displaced
+                                        updated[sourceDockIndex] = displaced
                                     } else updated[dockIndex] = pkg
                                     dockPackages = updated
                                     ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
                                     dock = updated.mapNotNull { item -> apps.find { it.pkg == item } }
-                                    if (fromHome && !fromDock) {
+                                    if (!fromDock) {
                                         val pages = homePages.map { it.toMutableList() }.toMutableList()
-                                        pages.forEach { page -> val index = page.indexOf(pkg); if (index >= 0) page[index] = "-" }
-                                        homePages = pages.map { it.toList() }
-                                        homePackages = homePages.getOrNull(currentPage).orEmpty()
-                                        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
+                                        val sourcePage = pages.indexOfFirst { pkg in it }
+                                        if (sourcePage >= 0) {
+                                            val sourceSlot = pages[sourcePage].indexOf(pkg)
+                                            pages[sourcePage][sourceSlot] = if (sourceDockIndex < 0 && originalTarget in apps.map { it.pkg }) originalTarget else "-"
+                                            homePages = pages.map { it.toList() }
+                                            homePackages = homePages.getOrNull(currentPage).orEmpty()
+                                            ctx.getSharedPreferences("nexo_home", 0).edit()
+                                                .putString("pages", homePages.joinToString("~") { it.joinToString("|") })
+                                                .putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
+                                        }
                                     }
                                 }
                             })
