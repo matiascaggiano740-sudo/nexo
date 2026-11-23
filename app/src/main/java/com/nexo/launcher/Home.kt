@@ -365,6 +365,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     val pageSwipeThresholdPx = with(LocalDensity.current) { 48.dp.toPx() }
     Box(
         Modifier.fillMaxSize()
+            .testTag("home-surface")
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
             .graphicsLayer { translationX = pageSwipeX }
             .pointerInput(homePages.size, editingHome, drawer) {
