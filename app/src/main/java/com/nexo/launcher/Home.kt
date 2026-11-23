@@ -815,6 +815,44 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 openFolder = null
             })
         }
+        if (editingHome && !drawer && openFolder == null) {
+            HomeEditOverview(
+                pages = homePages,
+                currentPage = currentPage,
+                apps = apps,
+                folders = userFolders,
+                dockPackages = dockPackages,
+                quote = quote,
+                timeText = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                dateText = date,
+                weatherText = if (w != null) "${w.temp}° · ${w.label} · ${w.city}" else city.ifBlank { "Tocá para elegir ciudad" },
+                defaultPackages = priority.map { it.pkg },
+                onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
+                onClose = { editingHome = false; showHomeMoreActions = false },
+                onWidget = {
+                    val count = homePages.getOrNull(currentPage).orEmpty().count { it != "-" }
+                    editingHome = false
+                    launcherActivity?.launchWidgetPicker(currentPage, count)
+                },
+                onWallpaper = {
+                    editingHome = false
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) }
+                        .onFailure { Toast.makeText(ctx, "No se pudo abrir la selección de fondo", Toast.LENGTH_SHORT).show() }
+                },
+                onAddPage = {
+                    val expanded = (homePages + listOf(emptyList())).toMutableList()
+                    ctx.getSharedPreferences("nexo_home", 0).edit()
+                        .putString("pages", expanded.joinToString("~") { it.joinToString("|") }).apply()
+                    homePages = expanded
+                    currentPage = expanded.lastIndex
+                    homePackages = emptyList()
+                },
+                onFolder = { showNewFolder = true },
+                onIcons = { editingHome = false; showIconThemeDialog = true },
+                onManage = { editingHome = false; showPageManager = true },
+                onBackup = { editingHome = false; showBackupDialog = true }
+            )
+        }
     }
     if (showIconThemeDialog) AlertDialog(
         onDismissRequest = { showIconThemeDialog = false },
@@ -1365,6 +1403,204 @@ fun AppIcon(
         }
     }
 }
+@Composable
+private fun HomeEditOverview(
+    pages: List<List<String>>,
+    currentPage: Int,
+    apps: List<AppItem>,
+    folders: List<Pair<String, List<String>>>,
+    dockPackages: List<String>,
+    quote: String,
+    timeText: String,
+    dateText: String,
+    weatherText: String,
+    defaultPackages: List<String>,
+    onSelectPage: (Int) -> Unit,
+    onClose: () -> Unit,
+    onWidget: () -> Unit,
+    onWallpaper: () -> Unit,
+    onAddPage: () -> Unit,
+    onFolder: () -> Unit,
+    onIcons: () -> Unit,
+    onManage: () -> Unit,
+    onBackup: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize()
+            .background(Color(0xF2171717))
+            .clickable(onClick = {})
+            .statusBarsPadding().navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Personalizar inicio", color = Cream, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text("Deslizá entre páginas y elegí una para editar", color = Cream.copy(alpha = 0.68f), fontSize = 12.sp)
+            }
+            TextButton(onClick = onClose, shape = RoundedCornerShape(22.dp)) {
+                Text("Listo", color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth().weight(1f).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            pages.forEachIndexed { index, page ->
+                HomeMiniPagePreview(
+                    index = index,
+                    selected = index == currentPage,
+                    packages = if (index == 0 && page.isEmpty()) defaultPackages else page,
+                    apps = apps,
+                    folders = folders,
+                    dockPackages = dockPackages,
+                    quote = quote,
+                    timeText = timeText,
+                    dateText = dateText,
+                    weatherText = weatherText,
+                    onClick = { onSelectPage(index) },
+                    modifier = Modifier.fillMaxHeight(0.94f).width(238.dp)
+                )
+            }
+        }
+        Text(
+            "Tocá una miniatura para cambiar de página. Mantené apretado un espacio vacío para volver a esta vista.",
+            color = Cream.copy(alpha = 0.68f), fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
+            textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                HomeEditActionCard("Widgets", "Agregar widgets", Modifier.weight(1f), onWidget)
+                HomeEditActionCard("Fondo", "Cambiar imagen", Modifier.weight(1f), onWallpaper)
+                HomeEditActionCard("+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                HomeEditActionCard("+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder)
+                HomeEditActionCard("Iconos", "Elegir estilo", Modifier.weight(1f), onIcons)
+                HomeEditActionCard("Páginas", "Ordenar o borrar", Modifier.weight(1f), onManage)
+            }
+            HomeEditActionCard("Respaldo", "Guardar o restaurar la distribución del inicio", Modifier.fillMaxWidth(), onBackup, compact = true)
+        }
+    }
+}
+
+@Composable
+private fun HomeMiniPagePreview(
+    index: Int,
+    selected: Boolean,
+    packages: List<String>,
+    apps: List<AppItem>,
+    folders: List<Pair<String, List<String>>>,
+    dockPackages: List<String>,
+    quote: String,
+    timeText: String,
+    dateText: String,
+    weatherText: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val outline = if (selected) Color(0xFFFFD37A) else Color.White.copy(alpha = 0.17f)
+    Surface(
+        color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
+        border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Column(
+            Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
+                .padding(horizontal = 11.dp, vertical = 9.dp)
+        ) {
+            Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("$timeText   ·   $dateText", color = Cream.copy(alpha = 0.7f), fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(5.dp))
+            Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(27.dp)) {
+                Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(weatherText, color = Cream, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Spacer(Modifier.height(7.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                repeat(7) { row ->
+                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        repeat(4) { column ->
+                            val slot = row * 4 + column
+                            val token = packages.getOrNull(slot)?.takeIf { it != "-" }
+                            val folderName = token?.removePrefix("folder:")?.takeIf { token.startsWith("folder:") }
+                            val folderApps = folderName?.let { key -> folders.find { it.first == key }?.second.orEmpty() }.orEmpty()
+                            val app = token?.takeUnless { it.startsWith("folder:") }?.let { pkg -> apps.find { it.pkg == pkg } }
+                            Column(
+                                Modifier.weight(1f).fillMaxHeight().clickable(onClick = onClick),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                when {
+                                    app != null -> Image(
+                                        app.icon, app.label,
+                                        Modifier.size(23.dp).clip(RoundedCornerShape(7.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    folderName != null -> {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                                            folderApps.take(2).forEach { pkg ->
+                                                apps.find { it.pkg == pkg }?.let { item ->
+                                                    Image(item.icon, null, Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)), contentScale = ContentScale.Crop)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else -> Spacer(Modifier.size(23.dp))
+                                }
+                                if (app != null) Text(app.label, color = Color.White, fontSize = 5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            if (index == 0 && quote.isNotBlank()) {
+                Surface(color = Color.White.copy(alpha = 0.10f), shape = RoundedCornerShape(9.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    Text(quote, color = Cream, fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+                }
+            }
+            Surface(color = Color.White.copy(alpha = 0.13f), shape = RoundedCornerShape(11.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(22.dp)) {
+                Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) { Text("Buscar apps y web", color = Cream.copy(alpha = 0.8f), fontSize = 7.sp) }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                repeat(4) { i ->
+                    val app = dockPackages.getOrNull(i)?.let { pkg -> apps.find { it.pkg == pkg } }
+                    if (app != null) Image(app.icon, app.label, Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+                    else Box(Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.12f)))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeEditActionCard(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    compact: Boolean = false
+) {
+    Surface(
+        color = Color.White.copy(alpha = 0.095f),
+        shape = RoundedCornerShape(17.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.11f)),
+        modifier = modifier.height(if (compact) 53.dp else 60.dp).clickable(onClick = onClick)
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = Cream.copy(alpha = 0.68f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
 @Composable
 private fun HomeEditAction(label: String, onClick: () -> Unit) {
     TextButton(

@@ -49,6 +49,9 @@ fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (them
         "com.google.android.gm" -> R.drawable.icon_liquid_gmail
         "com.google.android.calendar" -> R.drawable.icon_liquid_calendar
         "com.google.android.calculator", "com.android.calculator2", "com.miui.calculator" -> R.drawable.icon_liquid_calculator
+        "com.google.android.apps.nbu.files" -> R.drawable.icon_liquid_files
+        "com.google.android.keep" -> R.drawable.icon_liquid_keep
+        "com.twitter.android" -> R.drawable.icon_liquid_x
         else -> null
     }
     IconTheme.LIQUID_GLASS -> when (packageName) {
@@ -63,6 +66,10 @@ fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (them
         "com.google.android.dialer", "com.android.dialer", "com.miui.dialer" -> R.drawable.icon_crayon_phone
         "com.android.camera", "com.miui.camera", "com.android.camera2" -> R.drawable.icon_crayon_camera
         "com.google.android.calendar", "com.android.calendar" -> R.drawable.icon_crayon_calendar
+        "com.google.android.gm" -> R.drawable.icon_crayon_gmail
+        "com.google.android.apps.tachyon" -> R.drawable.icon_crayon_meet
+        "com.google.android.contacts", "com.android.contacts" -> R.drawable.icon_crayon_contacts
+        "com.miui.gallery" -> R.drawable.icon_crayon_gallery
         else -> null
     }
 }
