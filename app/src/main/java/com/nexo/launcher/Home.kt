@@ -261,7 +261,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         Spacer(Modifier.height(10.dp))
         }
         AnimatedVisibility(drawer, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            Drawer(apps) { drawer = false }
+            Drawer(apps, editingHome) { drawer = false }
         }
         openFolder?.let { name ->
             folders.find { it.first == name }?.let { FolderPanel(name, it.second) { openFolder = null } }
@@ -686,7 +686,7 @@ private fun AppWithCategoryMenu(
 
 }
 @Composable
-fun Drawer(apps: List<AppItem>, close: () -> Unit) {
+fun Drawer(apps: List<AppItem>, editingHome: Boolean, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var showOrganizer by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
