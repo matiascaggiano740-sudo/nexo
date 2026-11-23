@@ -1,9 +1,6 @@
 package com.nexo.launcher
 
 import android.app.Activity
-import android.app.WallpaperManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
@@ -14,13 +11,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import android.view.WindowManager
-import androidx.lifecycle.lifecycleScope
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,8 +25,6 @@ class MainActivity : ComponentActivity() {
     val hostedWidgetPages = mutableStateMapOf<Int, Int>()
     val hostedWidgetHeights = mutableStateMapOf<Int, Int>()
     val availableWidgetProviders = mutableStateListOf<AppWidgetProviderInfo>()
-    val currentWallpaper = androidx.compose.runtime.mutableStateOf<ImageBitmap?>(null)
-    private var wallpaperRefreshJob: Job? = null
     private var pendingWidgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID
     private var pendingWidgetPage: Int = 0
     private var pendingWidgetAppCells: Int = 0
@@ -49,9 +37,7 @@ class MainActivity : ComponentActivity() {
             pendingWidgetAppCells = state.getInt(STATE_PENDING_WIDGET_APP_CELLS, 0)
         }
         enableEdgeToEdge()
-        // Keep the window opaque; NEXO renders the system wallpaper itself behind its own UI.
-        window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
-        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.rgb(18, 17, 15)))
+        applyWallpaperSurface(intent)
         widgetHost = AppWidgetHost(this, HOST_ID)
         val widgetPrefs = getSharedPreferences("nexo_widgets", MODE_PRIVATE)
         val storedWidgetIds = widgetPrefs.getString("ids", "").orEmpty().split(",").mapNotNull { it.toIntOrNull() }
@@ -75,28 +61,25 @@ class MainActivity : ComponentActivity() {
         setContent { MaterialTheme { Home() } }
     }
 
-    override fun onResume() {
-        super.onResume()
-        wallpaperRefreshJob?.cancel()
-        wallpaperRefreshJob = lifecycleScope.launch {
-            currentWallpaper.value = withContext(Dispatchers.IO) { readCurrentWallpaper() }
+    /** Android paints the live/current system wallpaper behind a real Home activity. */
+    private fun applyWallpaperSurface(source: Intent?) {
+        val isHomeLaunch = source?.action == Intent.ACTION_MAIN &&
+            source.categories?.contains(Intent.CATEGORY_HOME) == true
+        if (isHomeLaunch) {
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+        } else {
+            // An app-icon launch must be opaque: otherwise the old launcher's icons show through.
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.rgb(18, 17, 15)))
         }
     }
 
-    private fun readCurrentWallpaper(): ImageBitmap? = runCatching {
-        val drawable = WallpaperManager.getInstance(this).drawable ?: return null
-        val sourceWidth = drawable.intrinsicWidth.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-        val sourceHeight = drawable.intrinsicHeight.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
-        val scale = minOf(1f, 2048f / maxOf(sourceWidth, sourceHeight))
-        val width = (sourceWidth * scale).toInt().coerceAtLeast(1)
-        val height = (sourceHeight * scale).toInt().coerceAtLeast(1)
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.scale(width.toFloat() / sourceWidth, height.toFloat() / sourceHeight)
-        drawable.setBounds(0, 0, sourceWidth, sourceHeight)
-        drawable.draw(canvas)
-        bitmap.asImageBitmap()
-    }.getOrNull()
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyWallpaperSurface(intent)
+    }
 
     override fun onStart() {
         super.onStart()
