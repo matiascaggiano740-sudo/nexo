@@ -116,7 +116,6 @@ fun Home() {
     }
     var homeCapacity by remember { mutableIntStateOf(0) }
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
-        var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(true) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
@@ -188,8 +187,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val homeDropTarget = remember(editingHome, homePackages, priority, apps, homeCapacity) {
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
-                if (!editingHome) return false
-
                 val clip = event.toAndroidDragEvent().clipData ?: return false
                 if (clip.itemCount == 0) return false
 
@@ -224,7 +221,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
                         .pointerInput(Unit) {
-                detectTapGestures(onLongPress = { editHome = true })
+                detectTapGestures(onLongPress = { editingHome = true })
             }
 
             .pointerInput(Unit) {
@@ -362,21 +359,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
-                    modifier = Modifier.weight(1f).height(46.dp).clickable { drawer = true }
+                    modifier = Modifier.fillMaxWidth().height(46.dp).clickable { drawer = true }
                 ) {
                     Box(Modifier.padding(horizontal = 20.dp), contentAlignment = Alignment.CenterStart) {
                         Text("Buscar apps y web", color = Color.White, fontSize = 14.sp)
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-
-                Surface(
-                    color = Glass,
-                    shape = RoundedCornerShape(23.dp),
-                                        modifier = Modifier.size(46.dp).clickable { editHome = true }
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                Text("⋮", color = Color.White, fontSize = 25.sp)
                     }
                 }
             }
@@ -405,27 +391,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         openFolder?.let { name ->
             folders.find { it.first == name }?.let { FolderPanel(name, it.second) { openFolder = null } }
         }
-    }
-    if (editHome) {
-        val currentPackages = if (homePackages.isEmpty()) {
-            priority.map { it.pkg }
-        } else {
-            homePackages
-        }
-
-        HomeAppsDialog(
-            apps = apps,
-            selectedPackages = currentPackages,
-            onDismiss = { editHome = false },
-            onSave = { selected ->
-                ctx.getSharedPreferences("nexo_home", 0)
-                    .edit()
-                    .putString("packages", selected.joinToString("|"))
-                    .apply()
-                homePackages = selected
-                editHome = false
-            }
-        )
     }
     if (editCity) {
         var t by remember { mutableStateOf(city) }
@@ -632,13 +597,22 @@ fun AppIcon(
     val iconModifier = Modifier
         .width(size + 12.dp)
         .then(dragModifier)
-        .combinedClickable(
-            onClick = {
-                onLaunch()
-                runCatching { ctx.startActivity(app.intent) }
-            },
-            onLongClick = onLongPress
-        )
+        .let { base ->
+            if (dragPayload != null) {
+                base.clickable {
+                    onLaunch()
+                    runCatching { ctx.startActivity(app.intent) }
+                }
+            } else {
+                base.combinedClickable(
+                    onClick = {
+                        onLaunch()
+                        runCatching { ctx.startActivity(app.intent) }
+                    },
+                    onLongClick = onLongPress
+                )
+            }
+        }
     Column(
         iconModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -669,8 +643,6 @@ private fun HomeAppCell(
     val dropTarget = remember(editingHome, index, onDrop) {
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
-                if (!editingHome) return false
-
                 val clip = event.toAndroidDragEvent().clipData ?: return false
                 if (clip.itemCount == 0) return false
 
@@ -687,9 +659,8 @@ private fun HomeAppCell(
             .height(90.dp)
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
-                    editingHome &&
-                        event.toAndroidDragEvent().clipDescription
-                            ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                    event.toAndroidDragEvent().clipDescription
+                        ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
                 },
                 target = dropTarget
             ),
@@ -701,7 +672,7 @@ private fun HomeAppCell(
                 60.dp,
                 Color.White,
                 onLongPress = onLongPress,
-                dragPayload = if (editingHome) app.pkg else null
+                dragPayload = app.pkg
             )
         }
     }
@@ -985,7 +956,7 @@ LaunchedEffect(apps) {
                 items(members.chunked(4), key = { row -> row.joinToString { it.pkg } }) { row ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { app ->
-    AppIcon(app, 56.dp, Color.White, onLaunch = close, dragPayload = if (editingHome) app.pkg else null)
+    AppIcon(app, 56.dp, Color.White, onLaunch = close, dragPayload = app.pkg)
 }
 
 
