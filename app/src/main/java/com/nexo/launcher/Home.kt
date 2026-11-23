@@ -168,8 +168,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }
     } else {
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-    }
-
+        }
         val folders = FOLDERS.mapNotNull { (name, pkgs) ->
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
         if (found.isEmpty()) null else name to found
@@ -286,7 +285,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     count = homeCapacity,
                     key = { index -> "home-cell-$index" }
                 ) { index ->
-                    val app = priority.getOrNull(index)
+                                        val app = homeSlots.getOrNull(index)
                     HomeAppCell(
                         app = app,
                         index = index,
