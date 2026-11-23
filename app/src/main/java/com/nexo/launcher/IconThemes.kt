@@ -15,6 +15,59 @@ enum class IconTheme(val key: String, val title: String) {
     }
 }
 
+/** Every user-provided artwork file bundled for a pack. */
+internal fun bundledIconAssets(theme: IconTheme): IntArray = when (theme) {
+    IconTheme.ORIGINAL -> intArrayOf()
+    IconTheme.CRAYON -> intArrayOf(
+        R.drawable.icon_crayon_calendar,
+        R.drawable.icon_crayon_camera,
+        R.drawable.icon_crayon_contacts,
+        R.drawable.icon_crayon_facebook,
+        R.drawable.icon_crayon_gallery,
+        R.drawable.icon_crayon_gmail,
+        R.drawable.icon_crayon_google,
+        R.drawable.icon_crayon_keep,
+        R.drawable.icon_crayon_meet,
+        R.drawable.icon_crayon_message_bubble,
+        R.drawable.icon_crayon_messenger,
+        R.drawable.icon_crayon_phone,
+        R.drawable.icon_crayon_settings,
+        R.drawable.icon_crayon_spotify,
+        R.drawable.icon_crayon_threads,
+        R.drawable.icon_crayon_tiktok,
+        R.drawable.icon_crayon_weather,
+        R.drawable.icon_crayon_whatsapp
+    )
+    IconTheme.LIQUID_GLASS -> intArrayOf(
+        R.drawable.icon_liquid_bible,
+        R.drawable.icon_liquid_calculator,
+        R.drawable.icon_liquid_calendar,
+        R.drawable.icon_liquid_canva,
+        R.drawable.icon_liquid_capcut,
+        R.drawable.icon_liquid_chatgpt,
+        R.drawable.icon_liquid_chrome,
+        R.drawable.icon_liquid_contacts,
+        R.drawable.icon_liquid_docs,
+        R.drawable.icon_liquid_files,
+        R.drawable.icon_liquid_gmail,
+        R.drawable.icon_liquid_google,
+        R.drawable.icon_liquid_instagram,
+        R.drawable.icon_liquid_keep,
+        R.drawable.icon_liquid_mail,
+        R.drawable.icon_liquid_maps,
+        R.drawable.icon_liquid_netflix,
+        R.drawable.icon_liquid_phone,
+        R.drawable.icon_liquid_photos,
+        R.drawable.icon_liquid_pinterest,
+        R.drawable.icon_liquid_pinwheel,
+        R.drawable.icon_liquid_play_store,
+        R.drawable.icon_liquid_settings,
+        R.drawable.icon_liquid_threads,
+        R.drawable.icon_liquid_x,
+        R.drawable.icon_liquid_youtube
+    )
+}
+
 fun savedIconTheme(context: Context): IconTheme = IconTheme.fromKey(
     context.getSharedPreferences("nexo_icon_settings", Context.MODE_PRIVATE).getString("theme", "original")
 )
