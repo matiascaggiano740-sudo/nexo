@@ -186,11 +186,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         priority.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     row.forEach { app ->
-                        AppIcon(app, 60.dp, Color.White, onLongPress = { editingHome = true })
-                    }
-                }
-            }
-
             if (folders.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     folders.forEach { (name, list) -> FolderIcon(name, list, 60.dp) { openFolder = name } }
