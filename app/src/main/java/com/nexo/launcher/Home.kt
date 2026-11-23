@@ -155,7 +155,6 @@ fun Home() {
     var showPageManager by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
-    var showNotificationAccessDialog by remember { mutableStateOf(false) }
     var showLockAdminDialog by remember { mutableStateOf(false) }
     var showIconThemeDialog by remember { mutableStateOf(false) }
     var iconTheme by remember { mutableStateOf(savedIconTheme(ctx)) }
@@ -674,7 +673,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
                     if (editingHome) TextButton(onClick = { showIconThemeDialog = true }) { Text("Iconos", color = Color.White) }
                     if (editingHome) TextButton(onClick = { showBackupDialog = true }) { Text("Respaldo", color = Color.White) }
-                    if (editingHome) TextButton(onClick = { showNotificationAccessDialog = true }) { Text(if (NotificationDots.hasAccess(ctx)) "Avisos ✓" else "Avisos") }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
                 }
             }
@@ -844,17 +842,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de administrador", Toast.LENGTH_LONG).show() }
         }) { Text("Revisar permiso") } },
         dismissButton = { TextButton(onClick = { showLockAdminDialog = false }) { Text("Ahora no") } }
-    )
-    if (showNotificationAccessDialog) AlertDialog(
-        onDismissRequest = { showNotificationAccessDialog = false },
-        title = { Text("Indicadores de notificación") },
-        text = { Text("Para mostrar un punto o contador, Android requiere habilitar el acceso a notificaciones de NEXO desde Ajustes. NEXO solo contará avisos activos por aplicación; no guardará ni mostrará mensajes, remitentes ni su contenido. No se activa sin tu autorización en el sistema.") },
-        confirmButton = { TextButton(onClick = {
-            showNotificationAccessDialog = false
-            runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-                .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de notificaciones", Toast.LENGTH_LONG).show() }
-        }) { Text("Abrir ajustes") } },
-        dismissButton = { TextButton(onClick = { showNotificationAccessDialog = false }) { Text("Ahora no") } }
     )
     if (showBackupDialog) AlertDialog(
         onDismissRequest = { showBackupDialog = false },
@@ -1216,13 +1203,6 @@ fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
                     }
                 }
             }
-            val folderPending = apps.sumOf { NotificationDots.counts[it.pkg] ?: 0 }
-            if (folderPending > 0) Surface(color = Color(0xFFE53935), shape = RoundedCornerShape(50),
-                modifier = Modifier.align(Alignment.TopEnd).size(if (folderPending > 1) 20.dp else 13.dp)) {
-                if (folderPending > 1) Box(contentAlignment = Alignment.Center) {
-                    Text(if (folderPending > 99) "99+" else folderPending.toString(), color = Color.White, fontSize = 9.sp, lineHeight = 10.sp, textAlign = TextAlign.Center)
-                }
-            }
         }
         Text(name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
@@ -1320,16 +1300,6 @@ fun AppIcon(
     ) {
         Box(Modifier.size(size)) {
             Image(app.icon, app.label, if (app.usesThemeAsset) Modifier.fillMaxSize() else Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)))
-            val pendingCount = NotificationDots.counts[app.pkg] ?: 0
-            if (pendingCount > 0) Surface(
-                color = Color(0xFFE53935),
-                shape = RoundedCornerShape(50),
-                modifier = Modifier.align(Alignment.TopEnd).size(if (pendingCount > 1) 20.dp else 13.dp)
-            ) {
-                if (pendingCount > 1) Box(contentAlignment = Alignment.Center) {
-                    Text(if (pendingCount > 99) "99+" else pendingCount.toString(), color = Color.White, fontSize = 9.sp, lineHeight = 10.sp, textAlign = TextAlign.Center)
-                }
-            }
         }
         if (showLabel) {
             Text(
