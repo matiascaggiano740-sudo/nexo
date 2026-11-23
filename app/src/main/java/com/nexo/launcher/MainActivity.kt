@@ -39,8 +39,17 @@ class MainActivity : ComponentActivity() {
             if (id !in hostedWidgetPages) hostedWidgetPages[id] = 0
             widgetPrefs.getInt("height_$id", -1).takeIf { it > 0 }?.let { hostedWidgetHeights[id] = it }
         }
-        widgetHost.startListening()
         setContent { MaterialTheme { Home() } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (::widgetHost.isInitialized) widgetHost.startListening()
+    }
+
+    override fun onStop() {
+        if (::widgetHost.isInitialized) widgetHost.stopListening()
+        super.onStop()
     }
 
     fun launchWidgetPicker(page: Int) {
@@ -212,7 +221,6 @@ class MainActivity : ComponentActivity() {
     }.getOrNull()
 
     override fun onDestroy() {
-        if (::widgetHost.isInitialized) widgetHost.stopListening()
         super.onDestroy()
     }
 

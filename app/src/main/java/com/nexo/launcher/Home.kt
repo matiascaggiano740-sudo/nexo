@@ -238,9 +238,16 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             .then(
                 if (!drawer) {
                     Modifier.pointerInput(drawer) {
-                        detectVerticalDragGestures { _, dy ->
-                            if (dy < -25) drawer = true
-                        }
+                        var startY = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { startY = it.y },
+                            onVerticalDrag = { change, dy ->
+                                if (startY >= size.height * 0.72f && dy < -25f) {
+                                    drawer = true
+                                    change.consume()
+                                }
+                            }
+                        )
                     }
                 } else Modifier
             )
