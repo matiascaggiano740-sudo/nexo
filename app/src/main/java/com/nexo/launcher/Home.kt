@@ -61,8 +61,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -869,14 +874,39 @@ var manualCategories by remember {
             .toMap()
     )
 }
+LaunchedEffect(apps) {
+    val missing = apps.map { it.pkg }.filterNot { playCategories.containsKey(it) }
+    if (missing.isEmpty()) return@LaunchedEffect
+
+    val semaphore = Semaphore(4)
+    val fetched = coroutineScope {
+        missing.map { pkg ->
+            async {
+                semaphore.withPermit {
+                    runCatching {
+                        withContext(Dispatchers.IO) { loadPlayStoreCategory(pkg) }
+                    }.getOrNull()?.let { category -> pkg to category }
+                }
+            }
+        }.awaitAll().filterNotNull().toMap()
+    }
+
+    if (fetched.isNotEmpty()) {
+        val cache = ctx.getSharedPreferences("nexo_play_categories", 0).edit()
+        fetched.forEach { (pkg, category) -> cache.putString(pkg, category) }
+        cache.apply()
+        playCategories = playCategories + fetched
+    }
+}
       val categories = remember(apps, q, playCategories, manualCategories) {
         val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
          listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Comida", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
               val members = filtered.filter { app ->
     (
         manualCategories[app.pkg]
+            ?: playCategories[app.pkg]
             ?: if (app.matchesAny("grido", "chef", "daniel", "mcdonald", "pedidosya", "rappi")) "Comida"
-            else (playCategories[app.pkg] ?: appCategory(app))
+            else appCategory(app)
     ) == name
 }
 
@@ -939,7 +969,7 @@ var manualCategories by remember {
         LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp)) {
             categories.forEach { (title, members) ->
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
-                items(members.chunked(4), key = { row -> row.joinToString { it.pkg } }) { row ->
+                items(members.chunked(4), key = { row -> "$title-${row.joinToString { it.pkg }}" }) { row ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { app ->
     AppIcon(app, 56.dp, Color.White, onLaunch = close, dragPayload = app.pkg)
@@ -997,8 +1027,9 @@ private fun OrganizeAppsDialog(
                     var expanded by remember(app.pkg) { mutableStateOf(false) }
                     val currentCategory =
     manualCategories[app.pkg]
+        ?: playCategories[app.pkg]
         ?: if (app.matchesAny("grido", "chef", "daniel", "mcdonald", "pedidosya", "rappi")) "Comida"
-        else (playCategories[app.pkg] ?: appCategory(app))
+        else appCategory(app)
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
