@@ -1488,7 +1488,7 @@ LaunchedEffect(apps) {
                 items(members.chunked(4), key = { row -> "$title-${row.joinToString { it.pkg }}" }) { row ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { app ->
-    AppIcon(app, 56.dp, Color.White, onLaunch = close, dragPayload = app.pkg)
+    AppIcon(app, 56.dp, Color.White, onLaunch = close, onLongPress = close, dragPayload = app.pkg)
 }
 
 
