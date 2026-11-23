@@ -318,9 +318,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                         ) }
                                     }
                                 }
-                                TextButton(onClick = { launcherActivity?.resizeWidget(widgetId, -90) }) { Text("−") }
+                                TextButton(enabled = launcherActivity?.canResizeWidget(widgetId) == true, onClick = { launcherActivity?.resizeWidget(widgetId, -90) }) { Text("−") }
                                 TextButton(onClick = { launcherActivity?.removeWidget(widgetId) }) { Text("Quitar", color = Color(0xFFB3261E)) }
-                                TextButton(onClick = { launcherActivity?.resizeWidget(widgetId, 90) }) { Text("＋") }
+                                TextButton(enabled = launcherActivity?.canResizeWidget(widgetId) == true, onClick = { launcherActivity?.resizeWidget(widgetId, 90) }) { Text("＋") }
                                 TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }) { Text("↓") }
                             }
                         }
@@ -573,12 +573,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
         }
         val targetPage = pages[currentPage]
-        val emptySlot = targetPage.indexOfFirst { it == "-" }
+        val pageWidgetArea = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
+            ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
+        val pageCellLimit = (28 - pageWidgetArea).coerceAtLeast(0)
+        val emptySlot = targetPage.take(pageCellLimit).indexOfFirst { it == "-" }
         val folderSlot = when {
-            existingFolderSlot >= 0 -> existingFolderSlot
-            reusableIndex >= 0 -> reusableIndex
+            existingFolderSlot in 0 until pageCellLimit -> existingFolderSlot
+            reusableIndex in 0 until pageCellLimit -> reusableIndex
             emptySlot >= 0 -> emptySlot
-            targetPage.size < 28 -> targetPage.size.also { targetPage.add("-") }
+            targetPage.size < pageCellLimit -> targetPage.size.also { targetPage.add("-") }
             else -> -1
         }
         if (folderSlot < 0) {
@@ -897,6 +900,7 @@ fun AppIcon(
                 runCatching { ctx.startActivity(app.intent) }
             },
             onLongClick = {
+                onLongPress?.invoke()
                 if (dragPayload != null) {
                     val clip = ClipData.newPlainText("nexo-app", dragPayload)
                     dragView.startDragAndDrop(
@@ -905,8 +909,6 @@ fun AppIcon(
                         dragPayload,
                         View.DRAG_FLAG_GLOBAL
                     )
-                } else {
-                    onLongPress?.invoke()
                 }
             }
         )

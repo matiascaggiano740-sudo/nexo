@@ -63,7 +63,10 @@ class MainActivity : ComponentActivity() {
         val id = widgetHost.allocateAppWidgetId()
         pendingWidgetId = id
         val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_PICK).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-        runCatching { startActivityForResult(intent, REQUEST_PICK) }.onFailure { widgetHost.deleteAppWidgetId(id) }
+        runCatching { startActivityForResult(intent, REQUEST_PICK) }.onFailure {
+            widgetHost.deleteAppWidgetId(id)
+            pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -189,13 +192,19 @@ class MainActivity : ComponentActivity() {
     fun widgetHeightDp(id: Int): Int = hostedWidgetHeights[id]
         ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight?.coerceIn(96, 320) ?: 132
 
+    fun canResizeWidget(id: Int): Boolean {
+        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return false
+        return info.minResizeHeight > 0 || info.maxResizeHeight > 0
+    }
+
     fun resizeWidget(id: Int, deltaDp: Int) {
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return
+        if (!canResizeWidget(id)) return
         val page = hostedWidgetPages[id] ?: 0
         val pageRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page && it != id }
             .sumOf { other -> (widgetHeightDp(other) + 99) / 100 }
-        val minHeight = info.minHeight.coerceAtLeast(90)
-        val maxHeight = (info.maxResizeHeight.takeIf { it > 0 } ?: 360).coerceAtLeast(minHeight)
+        val minHeight = info.minResizeHeight.takeIf { it > 0 } ?: info.minHeight.coerceAtLeast(90)
+        val maxHeight = (info.maxResizeHeight.takeIf { it > 0 } ?: 700).coerceAtLeast(minHeight)
         val newHeight = (widgetHeightDp(id) + deltaDp).coerceIn(minHeight, maxHeight)
         if (pageRows + (newHeight + 99) / 100 > 7) {
             Toast.makeText(this, "No hay suficientes celdas libres para agrandar el widget", Toast.LENGTH_SHORT).show()
