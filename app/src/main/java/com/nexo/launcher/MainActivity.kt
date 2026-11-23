@@ -25,6 +25,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         widgetHost = AppWidgetHost(this, HOST_ID)
         val widgetPrefs = getSharedPreferences("nexo_widgets", MODE_PRIVATE)
         hostedWidgetIds.addAll(widgetPrefs.getString("ids", "").orEmpty().split(",").mapNotNull { it.toIntOrNull() })
@@ -152,7 +154,14 @@ class MainActivity : ComponentActivity() {
 
     fun resizeWidget(id: Int, deltaDp: Int) {
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return
+        val page = hostedWidgetPages[id] ?: 0
+        val pageRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page && it != id }
+            .sumOf { other -> (widgetHeightDp(other) + 99) / 100 }
         val newHeight = (widgetHeightDp(id) + deltaDp).coerceIn(info.minHeight.coerceAtLeast(90), info.maxResizeHeight.takeIf { it > 0 } ?: 360)
+        if (pageRows + (newHeight + 99) / 100 > 7) {
+            Toast.makeText(this, "No hay suficientes celdas libres para agrandar el widget", Toast.LENGTH_SHORT).show()
+            return
+        }
         hostedWidgetHeights[id] = newHeight
         getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().putInt("height_$id", newHeight).apply()
         AppWidgetManager.getInstance(this).updateAppWidgetOptions(id, Bundle().apply {
