@@ -107,4 +107,32 @@ class HomeGridTest {
         assertEquals(56f, tall.iconSizeDp, 0.01f)
         assertTrue(tall.iconSizeDp + 24f <= 110f)
     }
+
+    @Test
+    fun randomizedLayoutsPreserveEveryUniqueShortcutExactlyOnce() {
+        val random = java.util.Random(20261123L)
+        repeat(600) {
+            val tokenPool = (0 until 45).map { "app.$it" } + (0 until 8).map { "folder:Folder$it" }
+            val pages = List(random.nextInt(6)) {
+                List(random.nextInt(38)) { index ->
+                    when (random.nextInt(8)) {
+                        0, 1 -> "-"
+                        else -> tokenPool[random.nextInt(tokenPool.size)]
+                    }
+                }
+            }
+            val widgets = (0 until 8).mapNotNull { page ->
+                if (random.nextBoolean()) page to random.nextInt(5) else null
+            }.toMap()
+            val defaults = listOf("default.a", "default.b")
+            val source = pages.ifEmpty { listOf(emptyList()) }
+            val savedTokens = source.flatMap { it.filter { token -> token.isNotBlank() && token != "-" } }
+            val expected = (savedTokens + if (source.first().isEmpty()) defaults else emptyList()).toSet()
+            val result = HomeGrid.normalize(pages, widgets, defaults)
+            val actual = visibleTokens(result)
+            assertEquals(expected, actual.toSet())
+            assertEquals(actual.size, actual.toSet().size)
+            assertTrue(result.all { it.size == HomeGrid.CELL_COUNT })
+        }
+    }
 }
