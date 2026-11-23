@@ -18,7 +18,7 @@ object NotificationDots {
         return enabled.split(':').any { it.equals(component, ignoreCase = true) }
     }
 
-    internal fun replaceFrom(notifications: Array<StatusBarNotification>) {
+    internal fun replaceFrom(notifications: Array<out StatusBarNotification>) {
         counts.clear()
         notifications.asSequence()
             .filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 }
