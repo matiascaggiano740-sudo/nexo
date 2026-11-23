@@ -161,15 +161,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     BackHandler(drawer) { drawer = false }
     BackHandler(openFolder != null) { openFolder = null }
 
-        val priority = if (homePackages.isEmpty()) {
+            val priority = if (homePackages.isEmpty()) {
         PRIORITY.mapNotNull { group ->
             group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
         }
     } else {
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-        }
-            val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
-            val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
+    }
+
+    val homeSlots: List<AppItem?> = if (homePackages.isEmpty()) {
         priority
     } else {
         homePackages.map { pkg ->
@@ -181,9 +181,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
         if (found.isEmpty()) null else name to found
     }
+
+    val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
         .replaceFirstChar { it.uppercase() }
     val w = weather
-
         val homeDropTarget = remember(editingHome, homePackages, priority, apps, homeCapacity) {
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
