@@ -118,7 +118,8 @@ fun Home() {
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
         var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
-        var editingHome by remember { mutableStateOf(true) }
+            var editingHome by remember { mutableStateOf(false) }
+ }
     var packageRefresh by remember { mutableStateOf(0) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
@@ -138,7 +139,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             photoTick++
         }
     }
-
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
             val list = loadApps(ctx)
