@@ -1,6 +1,9 @@
 package com.nexo.launcher
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 
 enum class IconTheme(val key: String, val title: String) {
     ORIGINAL("original", "Original POCO"),
@@ -15,6 +18,13 @@ enum class IconTheme(val key: String, val title: String) {
 fun savedIconTheme(context: Context): IconTheme = IconTheme.fromKey(
     context.getSharedPreferences("nexo_icon_settings", Context.MODE_PRIVATE).getString("theme", "original")
 )
+
+
+/** Decode the bundled original JPEG near launcher icon resolution, avoiding full-size bitmap allocations. */
+fun decodeThemeIcon(context: Context, resourceId: Int): ImageBitmap? = runCatching {
+    val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+    BitmapFactory.decodeResource(context.resources, resourceId, options)?.asImageBitmap()
+}.getOrNull()
 
 /** Only package/icon pairs that can be identified confidently are themed. All others use the device icon. */
 fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (theme) {

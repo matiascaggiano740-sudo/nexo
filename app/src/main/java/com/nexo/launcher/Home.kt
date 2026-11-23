@@ -252,7 +252,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }
     }
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.Default) {
+        withContext(Dispatchers.IO) {
             val list = loadApps(ctx)
             val sys = loadSystemDock(ctx)
             val msgs = list.firstOrNull { it.pkg in MESSAGES } ?: sys.getOrNull(1)
