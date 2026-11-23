@@ -45,13 +45,14 @@ import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
-import androidx.compose.foundation.draganddrop.dragAndDropSource
+import android.view.View
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -123,7 +124,7 @@ fun Home() {
     var homeCapacity by remember { mutableIntStateOf(0) }
     val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
     var drawer by remember { mutableStateOf(false) }
-                var editingHome by remember { mutableStateOf(true) }
+                var editingHome by remember { mutableStateOf(false) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -190,61 +191,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
         .replaceFirstChar { it.uppercase() }
     val w = weather
-        val homeDropTarget = remember(editingHome, homePackages, priority, apps, homeCapacity) {
-        object : DragAndDropTarget {
-            override fun onDrop(event: DragAndDropEvent): Boolean {
-                val clip = event.toAndroidDragEvent().clipData ?: return false
-                if (clip.itemCount == 0) return false
 
-                val pkg = clip.getItemAt(0).text?.toString() ?: return false
-                if (apps.none { it.pkg == pkg }) return false
-
-                val current = if (homePackages.isEmpty()) {
-                    priority.map { it.pkg }
-                } else {
-                    homePackages
-                }
-
-                if (pkg !in current) {
-                    if (current.size >= homeCapacity) {
-                        Toast.makeText(ctx, "No hay espacio libre en inicio", Toast.LENGTH_SHORT).show()
-                        return true
-                    }
-
-                    val updated = current + pkg
-                    ctx.getSharedPreferences("nexo_home", 0)
-                        .edit()
-                        .putString("packages", updated.joinToString("|"))
-                        .apply()
-                    homePackages = updated
-                }
-                drawer = false
-                return true
-            }
-        }
-        }
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
             .then(
                 if (!drawer) {
-                    Modifier
-                        .pointerInput(drawer) {
-                            detectTapGestures(onLongPress = { editingHome = true })
+                    Modifier.pointerInput(drawer) {
+                        detectVerticalDragGestures { _, dy ->
+                            if (dy < -25) drawer = true
                         }
-                        .pointerInput(drawer) {
-                            detectVerticalDragGestures { _, dy ->
-                                if (dy < -25) drawer = true
-                            }
-                        }
+                    }
                 } else Modifier
-            )
-            .dragAndDropTarget(
-                shouldStartDragAndDrop = { event ->
-                                        false
-
-                },
-                target = homeDropTarget
             )
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
@@ -307,43 +265,36 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
                         onDrop = { draggedPkg, targetIndex ->
-                            if (apps.any { it.pkg == draggedPkg }) {
+                            if (apps.any { it.pkg == draggedPkg } && targetIndex in 0 until homeCapacity) {
                                 val slots = (if (homePackages.isEmpty()) {
-                                    priority.map { it.pkg }
+                                    priority.map { it.pkg }.toMutableList()
                                 } else {
-                                    homePackages
-                                }).toMutableList()
+                                    homePackages.toMutableList()
+                                })
+                                while (slots.size < homeCapacity) slots.add("-")
+                                if (slots.size > homeCapacity) slots.subList(homeCapacity, slots.size).clear()
 
-                                while (slots.size < homeCapacity) {
-                                    slots.add("-")
-                                }
-
-                                if (targetIndex in slots.indices) {
-                                    val sourceIndex = slots.indexOf(draggedPkg)
-
-                                    if (sourceIndex >= 0) {
-                                        if (sourceIndex != targetIndex) {
-                                            val displaced = slots[targetIndex]
-                                            slots[targetIndex] = draggedPkg
-                                            slots[sourceIndex] = displaced
-                                        }
-                                    } else if (slots[targetIndex] == "-") {
-                                        slots[targetIndex] = draggedPkg
+                                val sourceIndex = slots.indexOf(draggedPkg)
+                                if (sourceIndex >= 0) {
+                                    val displaced = slots[targetIndex]
+                                    slots[targetIndex] = draggedPkg
+                                    slots[sourceIndex] = displaced
+                                } else {
+                                    val emptyIndex = slots.indexOfFirst { it == "-" }
+                                    if (emptyIndex < 0) {
+                                        Toast.makeText(ctx, "No hay espacio libre en inicio", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        Toast.makeText(
-                                            ctx,
-                                            "Esa celda ya está ocupada",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                        for (i in emptyIndex downTo targetIndex + 1) slots[i] = slots[i - 1]
+                                        slots[targetIndex] = draggedPkg
                                     }
-
-                                    ctx.getSharedPreferences("nexo_home", 0)
-                                        .edit()
-                                        .putString("packages", slots.joinToString("|"))
-                                        .apply()
-                                    homePackages = slots
-                                    drawer = false
                                 }
+
+                                ctx.getSharedPreferences("nexo_home", 0)
+                                    .edit()
+                                    .putString("packages", slots.joinToString("|"))
+                                    .apply()
+                                homePackages = slots
+                                drawer = false
                             }
                         }
                     )
@@ -595,34 +546,28 @@ fun AppIcon(
     dragPayload: String? = null
 ) {
     val ctx = LocalContext.current
-    val dragModifier = if (dragPayload != null) {
-                Modifier.dragAndDropSource { _: androidx.compose.ui.geometry.Offset ->
-            DragAndDropTransferData(
-                ClipData.newPlainText("nexo-app", dragPayload)
-            )
-        }
-    } else {
-        Modifier
-    }
+    val dragView = LocalView.current
     val iconModifier = Modifier
         .width(size + 12.dp)
-        .then(dragModifier)
-        .let { base ->
-            if (dragPayload != null) {
-                base.clickable {
-                    onLaunch()
-                    runCatching { ctx.startActivity(app.intent) }
+        .combinedClickable(
+            onClick = {
+                onLaunch()
+                runCatching { ctx.startActivity(app.intent) }
+            },
+            onLongClick = {
+                if (dragPayload != null) {
+                    val clip = ClipData.newPlainText("nexo-app", dragPayload)
+                    dragView.startDragAndDrop(
+                        clip,
+                        View.DragShadowBuilder(dragView),
+                        dragPayload,
+                        View.DRAG_FLAG_GLOBAL
+                    )
+                } else {
+                    onLongPress?.invoke()
                 }
-            } else {
-                base.combinedClickable(
-                    onClick = {
-                        onLaunch()
-                        runCatching { ctx.startActivity(app.intent) }
-                    },
-                    onLongClick = onLongPress
-                )
             }
-        }
+        )
     Column(
         iconModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -667,6 +612,13 @@ private fun HomeAppCell(
         Modifier
             .fillMaxWidth()
             .height(90.dp)
+            .then(
+                if (app == null) {
+                    Modifier.pointerInput(index) {
+                        detectTapGestures(onLongPress = onLongPress)
+                    }
+                } else Modifier
+            )
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
                     event.toAndroidDragEvent().clipDescription
@@ -923,20 +875,9 @@ LaunchedEffect(apps) {
     Spacer(Modifier.height(16.dp))
 
     Row(
-    Modifier.fillMaxWidth().pointerInput(Unit) {
-        var totalDrag = 0f
-        var alreadyClosed = false
-        detectVerticalDragGestures(onVerticalDrag = { change, dragAmount ->
-            totalDrag += dragAmount
-            if (!alreadyClosed && totalDrag > 60f) {
-                alreadyClosed = true
-                close()
-                change.consume()
-            }
-        })
-    },
-    verticalAlignment = Alignment.CenterVertically
-) {
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
 
         OutlinedTextField(
             q,
