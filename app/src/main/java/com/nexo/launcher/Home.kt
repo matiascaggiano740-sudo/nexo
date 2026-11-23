@@ -19,6 +19,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,6 +50,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.DragAndDropEvent
@@ -153,6 +156,7 @@ fun Home() {
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
+    var showHomeMoreActions by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
     var showLockAdminDialog by remember { mutableStateOf(false) }
@@ -359,7 +363,39 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 } else Modifier
             )
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
+        val pageSwipeOffset = remember { Animatable(0f) }
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)
+                .graphicsLayer { translationX = pageSwipeOffset.value }
+                .pointerInput(homePages.size, editingHome) {
+                    if (!editingHome && homePages.size > 1) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, amount ->
+                                change.consume()
+                                launch { pageSwipeOffset.snapTo(pageSwipeOffset.value + amount) }
+                            },
+                            onDragEnd = {
+                                val direction = when {
+                                    pageSwipeOffset.value < -55f && currentPage < homePages.lastIndex -> 1
+                                    pageSwipeOffset.value > 55f && currentPage > 0 -> -1
+                                    else -> 0
+                                }
+                                launch {
+                                    if (direction != 0) {
+                                        val width = size.width.toFloat()
+                                        pageSwipeOffset.animateTo(if (direction > 0) -width else width, tween(180))
+                                        val nextPage = currentPage + direction
+                                        currentPage = nextPage
+                                        homePackages = homePages.getOrNull(nextPage).orEmpty()
+                                        pageSwipeOffset.snapTo(if (direction > 0) width else -width)
+                                    }
+                                    pageSwipeOffset.animateTo(0f, tween(180))
+                                }
+                            }
+                        )
+                    }
+                }
+        ) {
             Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light,
                 modifier = Modifier.padding(top = 4.dp).combinedClickable(onClick = {}, onLongClick = { editingHome = true }))
@@ -427,21 +463,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .pointerInput(currentPage, homePages.size, editingHome) {
-                        if (!editingHome) {
-                            var accumulated = 0f
-                            detectHorizontalDragGestures(
-                                onHorizontalDrag = { change, amount -> change.consume(); accumulated += amount },
-                                onDragEnd = {
-                                    if (accumulated < -55 && currentPage < homePages.lastIndex) {
-                                        currentPage++; homePackages = homePages.getOrNull(currentPage).orEmpty()
-                                    } else if (accumulated > 55 && currentPage > 0) {
-                                        currentPage--; homePackages = homePages.getOrNull(currentPage).orEmpty()
-                                    }
-                                }
-                            )
-                        }
-                    },
                 userScrollEnabled = true,
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -611,24 +632,50 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
 
-            if (homePages.size > 1 || editingHome) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 2.dp, bottom = 4.dp), horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically) {
-                    if (editingHome) TextButton(onClick = { launcherActivity?.launchWidgetPicker(currentPage, pageAppCellCount) }) {
-                        Text("＋ Widget", color = Color.White)
+            if (editingHome) {
+                Surface(
+                    color = Color(0xD922201F),
+                    shape = RoundedCornerShape(26.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        HomeEditAction("Widget", onClick = { launcherActivity?.launchWidgetPicker(currentPage, pageAppCellCount) })
+                        HomeEditAction("Fondo", onClick = {
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) }
+                                .onFailure { Toast.makeText(ctx, "No se pudo abrir la selección de fondo", Toast.LENGTH_SHORT).show() }
+                        })
+                        HomeEditAction("+ Página", onClick = {
+                            val expanded = (homePages + listOf(emptyList())).toMutableList()
+                            ctx.getSharedPreferences("nexo_home", 0).edit()
+                                .putString("pages", expanded.joinToString("~") { it.joinToString("|") }).apply()
+                            homePages = expanded
+                            currentPage = expanded.lastIndex
+                            homePackages = emptyList()
+                        })
+                        HomeEditAction("+ Carpeta", onClick = { showNewFolder = true })
+                        Box {
+                            HomeEditAction("Más", onClick = { showHomeMoreActions = true })
+                            DropdownMenu(expanded = showHomeMoreActions, onDismissRequest = { showHomeMoreActions = false }) {
+                                DropdownMenuItem(text = { Text("Administrar páginas") }, onClick = { showHomeMoreActions = false; showPageManager = true })
+                                DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
+                                DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
+                            }
+                        }
+                        HomeEditAction("Listo", onClick = { editingHome = false; showHomeMoreActions = false })
                     }
-                    if (editingHome) TextButton(onClick = {
-                        runCatching { ctx.startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) }
-                            .onFailure { Toast.makeText(ctx, "No se pudo abrir la selección de fondo", Toast.LENGTH_SHORT).show() }
-                    }) { Text("Fondo", color = Color.White) }
-                    if (editingHome) TextButton(onClick = {
-                        val expanded = (homePages + listOf(emptyList())).toMutableList()
-                        ctx.getSharedPreferences("nexo_home", 0).edit()
-                            .putString("pages", expanded.joinToString("~") { it.joinToString("|") }).apply()
-                        homePages = expanded
-                        currentPage = expanded.lastIndex
-                        homePackages = emptyList()
-                    }) { Text("＋ Página", color = Color.White) }
+                }
+            }
+            if (homePages.size > 1) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 0.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     homePages.indices.forEach { page ->
                         HomePageIndicator(page = page, selected = currentPage == page,
                             onSelect = { currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
@@ -644,7 +691,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     val dest = pages[page]
                                     val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
                                         ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
-                                    val appCapacity = (28 - widgetCells).coerceAtLeast(0)
                                     val appStart = widgetCells.coerceAtMost(28)
                                     if (token in dest) {
                                         currentPage = page; homePackages = dest.toList()
@@ -670,14 +716,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 }
                             })
                     }
-                    if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
-                    if (editingHome) TextButton(onClick = { showIconThemeDialog = true }) { Text("Iconos", color = Color.White) }
-                    if (editingHome) TextButton(onClick = { showBackupDialog = true }) { Text("Respaldo", color = Color.White) }
-                    if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
                 }
-            }
-            if (editingHome) TextButton(onClick = { showNewFolder = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text("＋ Carpeta", color = Color.White)
             }
             Spacer(Modifier.height(4.dp))
             QuoteCard(quote, photo) { editCard = true }
@@ -1314,6 +1353,17 @@ fun AppIcon(
         }
     }
 }
+@Composable
+private fun HomeEditAction(label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(22.dp)
+    ) {
+        Text(label, color = Color.White, fontSize = 12.sp, maxLines = 1)
+    }
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit, onDrop: (String) -> Unit) {
