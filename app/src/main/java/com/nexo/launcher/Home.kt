@@ -2,6 +2,7 @@ package com.nexo.launcher
 
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.appwidget.AppWidgetProviderInfo
 import android.content.pm.ShortcutInfo
 import android.os.Process
 import android.graphics.Rect
@@ -854,6 +855,31 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             )
         }
     }
+    val availableWidgetProviders = launcherActivity?.availableWidgetProviders.orEmpty()
+    if (availableWidgetProviders.isNotEmpty()) AlertDialog(
+        onDismissRequest = { launcherActivity?.cancelWidgetPicker() },
+        title = { Text("Elegí un widget") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                items(availableWidgetProviders, key = { it.provider.flattenToString() }) { provider ->
+                    val label = runCatching { provider.loadLabel(ctx.packageManager).toString() }
+                        .getOrDefault(provider.provider.className)
+                    Column(
+                        Modifier.fillMaxWidth().clickable {
+                            launcherActivity?.selectWidgetProvider(provider)
+                        }.padding(vertical = 10.dp, horizontal = 4.dp)
+                    ) {
+                        Text(label, style = MaterialTheme.typography.titleSmall)
+                        Text(provider.provider.packageName, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider()
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = { launcherActivity?.cancelWidgetPicker() }) { Text("Cancelar") } }
+    )
     if (showIconThemeDialog) AlertDialog(
         onDismissRequest = { showIconThemeDialog = false },
         title = { Text("Estilo de iconos") },

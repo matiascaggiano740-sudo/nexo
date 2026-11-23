@@ -4,6 +4,7 @@ import android.app.Activity
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
     val hostedWidgetIds = mutableStateListOf<Int>()
     val hostedWidgetPages = mutableStateMapOf<Int, Int>()
     val hostedWidgetHeights = mutableStateMapOf<Int, Int>()
+    val availableWidgetProviders = mutableStateListOf<AppWidgetProviderInfo>()
     private var pendingWidgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID
     private var pendingWidgetPage: Int = 0
     private var pendingWidgetAppCells: Int = 0
@@ -91,12 +93,44 @@ class MainActivity : ComponentActivity() {
         }
         pendingWidgetPage = page
         pendingWidgetAppCells = appCells
+        val manager = AppWidgetManager.getInstance(this)
+        availableWidgetProviders.clear()
+        availableWidgetProviders.addAll(
+            runCatching { manager.installedProviders }
+                .getOrDefault(emptyList())
+                .sortedBy { provider ->
+                    runCatching { provider.loadLabel(packageManager).toString() }
+                        .getOrDefault(provider.provider.className)
+                        .lowercase(java.util.Locale.ROOT)
+                }
+        )
+        if (availableWidgetProviders.isEmpty()) {
+            Toast.makeText(this, "Android no informó widgets disponibles", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun cancelWidgetPicker() {
+        availableWidgetProviders.clear()
+    }
+
+    fun selectWidgetProvider(info: AppWidgetProviderInfo) {
+        if (info !in availableWidgetProviders) return
+        availableWidgetProviders.clear()
         val id = widgetHost.allocateAppWidgetId()
         pendingWidgetId = id
-        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_PICK).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-        runCatching { startActivityForResult(intent, REQUEST_PICK) }.onFailure {
+        val manager = AppWidgetManager.getInstance(this)
+        val allowed = runCatching { manager.bindAppWidgetIdIfAllowed(id, info.provider) }.getOrDefault(false)
+        if (allowed) {
+            launchConfiguration(id)
+            return
+        }
+        val bind = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+        runCatching { startActivityForResult(bind, REQUEST_BIND) }.onFailure {
             widgetHost.deleteAppWidgetId(id)
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+            Toast.makeText(this, "Android no pudo abrir la autorización de este widget", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -104,32 +138,13 @@ class MainActivity : ComponentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         val id = data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidgetId)
             ?: pendingWidgetId
-        if (requestCode !in setOf(REQUEST_PICK, REQUEST_BIND, REQUEST_CONFIGURE)) return
+        if (requestCode !in setOf(REQUEST_BIND, REQUEST_CONFIGURE)) return
         if (resultCode != Activity.RESULT_OK || id == AppWidgetManager.INVALID_APPWIDGET_ID) {
             if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) widgetHost.deleteAppWidgetId(pendingWidgetId)
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
             return
         }
         when (requestCode) {
-            REQUEST_PICK -> {
-                val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id)
-                if (info == null) {
-                    widgetHost.deleteAppWidgetId(id)
-                    pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-                    return
-                }
-                val allowed = AppWidgetManager.getInstance(this).bindAppWidgetIdIfAllowed(id, info.provider)
-                if (allowed) launchConfiguration(id)
-                else {
-                    val bind = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
-                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
-                    runCatching { startActivityForResult(bind, REQUEST_BIND) }.onFailure {
-                        widgetHost.deleteAppWidgetId(id)
-                        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-                    }
-                }
-            }
             REQUEST_BIND -> launchConfiguration(id)
             REQUEST_CONFIGURE -> persistWidget(id)
         }
@@ -329,7 +344,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val HOST_ID = 0x4E45584F
-        private const val REQUEST_PICK = 4101
         private const val REQUEST_BIND = 4102
         private const val REQUEST_CONFIGURE = 4103
     }
