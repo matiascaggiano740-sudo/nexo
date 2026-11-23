@@ -90,4 +90,21 @@ class HomeGridTest {
         assertTrue(once.all { it.size == HomeGrid.CELL_COUNT })
         assertTrue(once.all { it.size == HomeGrid.COLUMN_COUNT * HomeGrid.ROW_COUNT })
     }
+
+    @Test
+    fun homeIconsAndLabelsFitTheirMeasuredCellsWithoutOverlappingNeighbors() {
+        val compact = homeIconSizing(60f)
+        assertTrue(!compact.showLabel)
+        assertTrue(compact.iconSizeDp + 8f <= 60f)
+
+        val regular = homeIconSizing(88f)
+        assertTrue(regular.showLabel)
+        assertTrue(regular.iconSizeDp + 24f <= 88f)
+        assertEquals(47.52f, regular.iconSizeDp, 0.01f)
+
+        val tall = homeIconSizing(110f)
+        assertTrue(tall.showLabel)
+        assertEquals(56f, tall.iconSizeDp, 0.01f)
+        assertTrue(tall.iconSizeDp + 24f <= 110f)
+    }
 }
