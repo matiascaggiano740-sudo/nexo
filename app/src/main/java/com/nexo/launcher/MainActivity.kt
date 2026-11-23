@@ -234,6 +234,7 @@ class MainActivity : ComponentActivity() {
     fun restoreWidgetPlacements(specs: JSONArray, pageCount: Int): Triple<Int, Int, Int> {
         val manager = AppWidgetManager.getInstance(this)
         val used = mutableSetOf<Int>()
+        val restoredOrder = mutableListOf<Int>()
         var restored = 0
         var needsReAdd = 0
         for (index in 0 until specs.length()) {
@@ -250,6 +251,7 @@ class MainActivity : ComponentActivity() {
                 continue
             }
             used += match
+            restoredOrder += match
             hostedWidgetPages[match] = spec.optInt("page", 0).coerceIn(0, (pageCount - 1).coerceAtLeast(0))
             val info = manager.getAppWidgetInfo(match)
             if (info != null && spec.has("heightDp")) {
@@ -266,12 +268,13 @@ class MainActivity : ComponentActivity() {
         }
         val removedIds = hostedWidgetIds.filterNot { it in used }.toList()
         removedIds.forEach { id ->
-            hostedWidgetIds.remove(id)
             hostedWidgetPages.remove(id)
             hostedWidgetHeights.remove(id)
             widgetHost.deleteAppWidgetId(id)
             getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().remove("height_$id").apply()
         }
+        hostedWidgetIds.clear()
+        hostedWidgetIds.addAll(restoredOrder)
         persistWidgetState()
         return Triple(restored, needsReAdd, removedIds.size)
     }
