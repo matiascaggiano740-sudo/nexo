@@ -1,6 +1,9 @@
 package com.nexo.launcher
 
 import android.content.Intent
+import android.content.pm.LauncherApps
+import android.content.pm.ShortcutInfo
+import android.os.Process
 import android.graphics.Rect
 import android.graphics.Point
 import android.graphics.Paint
@@ -154,6 +157,9 @@ fun Home() {
     var pendingImportText by remember { mutableStateOf<String?>(null) }
     var showNotificationAccessDialog by remember { mutableStateOf(false) }
     var showLockAdminDialog by remember { mutableStateOf(false) }
+    var shortcutTarget by remember { mutableStateOf<AppItem?>(null) }
+    var shortcutRows by remember { mutableStateOf<List<ShortcutInfo>>(emptyList()) }
+    var shortcutAccessDenied by remember { mutableStateOf(false) }
     var homeCapacity by remember { mutableIntStateOf(28) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
@@ -167,6 +173,55 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     var photo by remember { mutableStateOf<ImageBitmap?>(null) }
     var photoTick by remember { mutableStateOf(0) }
     var editCard by remember { mutableStateOf(false) }
+
+    fun addAppToCurrentHome(app: AppItem) {
+        val pages = homePages.map { it.toMutableList() }.toMutableList()
+        while (pages.size <= currentPage) pages.add(mutableListOf())
+        val page = pages[currentPage]
+        if (app.pkg in page) {
+            Toast.makeText(ctx, "La aplicación ya está en esta página", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val occupiedWidgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
+            ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
+        val firstAppCell = occupiedWidgetCells.coerceIn(0, 28)
+        while (page.size < 28) page.add("-")
+        val slot = (firstAppCell until 28).firstOrNull { page[it] == "-" }
+        if (slot == null) {
+            Toast.makeText(ctx, "No hay una celda libre en esta página", Toast.LENGTH_LONG).show()
+            return
+        }
+        page[slot] = app.pkg
+        val saved = pages.map { it.toList() }
+        homePages = saved
+        homePackages = saved.getOrNull(currentPage).orEmpty()
+        ctx.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", saved.joinToString("~") { it.joinToString("|") })
+            .putString("packages", saved.firstOrNull().orEmpty().joinToString("|")).apply()
+        drawer = false
+    }
+
+    fun showShortcutsFor(app: AppItem) {
+        val launcherApps = ctx.getSystemService(LauncherApps::class.java)
+        if (launcherApps == null || !launcherApps.hasShortcutHostPermission()) {
+            shortcutTarget = app
+            shortcutRows = emptyList()
+            shortcutAccessDenied = true
+            return
+        }
+        val shortcuts = runCatching {
+            val query = LauncherApps.ShortcutQuery().setPackage(app.pkg).setQueryFlags(
+                LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or
+                    LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or
+                    LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
+            )
+            launcherApps.getShortcuts(query, Process.myUserHandle()).orEmpty()
+                .sortedWith(compareBy<ShortcutInfo> { if (it.isDynamic) 1 else 0 }.thenBy { it.rank })
+        }.getOrDefault(emptyList())
+        shortcutTarget = app
+        shortcutRows = shortcuts
+        shortcutAccessDenied = false
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -695,7 +750,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         Spacer(Modifier.height(10.dp))
         }
         AnimatedVisibility(drawer, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            Drawer(apps, editingHome) { drawer = false }
+            Drawer(apps, editingHome, onAppLongPress = { app -> showShortcutsFor(app) }) { drawer = false }
         }
         openFolder?.let { name ->
             val contents = if (name.startsWith("user:")) {
@@ -709,6 +764,36 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             })
         }
     }
+    if (shortcutTarget != null && !shortcutAccessDenied) AlertDialog(
+        onDismissRequest = { shortcutTarget = null; shortcutRows = emptyList() },
+        title = { Text("${shortcutTarget?.label} · accesos directos") },
+        text = { Column {
+            if (shortcutRows.isEmpty()) Text("Esta aplicación no ofrece accesos directos ahora.")
+            else shortcutRows.forEach { shortcut ->
+                TextButton(onClick = {
+                    val app = shortcutTarget ?: return@TextButton
+                    runCatching { ctx.getSystemService(LauncherApps::class.java)?.startShortcut(app.pkg, shortcut.id, null, null, Process.myUserHandle()) }
+                        .onFailure { Toast.makeText(ctx, "Ese acceso directo ya no está disponible", Toast.LENGTH_SHORT).show() }
+                    shortcutTarget = null
+                    shortcutRows = emptyList()
+                    drawer = false
+                }, modifier = Modifier.fillMaxWidth()) { Text((shortcut.shortLabel ?: shortcut.longLabel ?: shortcut.id).toString(), maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            }
+        } },
+        confirmButton = { TextButton(onClick = { shortcutTarget?.let(::addAppToCurrentHome); shortcutTarget = null; shortcutRows = emptyList() }) { Text("Agregar al inicio") } },
+        dismissButton = { TextButton(onClick = { shortcutTarget = null; shortcutRows = emptyList() }) { Text("Cerrar") } }
+    )
+    if (shortcutTarget != null && shortcutAccessDenied) AlertDialog(
+        onDismissRequest = { shortcutTarget = null; shortcutAccessDenied = false },
+        title = { Text("Accesos directos de ${shortcutTarget?.label}") },
+        text = { Text("Android solo permite que el launcher predeterminado lea estos accesos directos. NEXO todavía se está usando como aplicación normal, así que este acceso aparece cuando lo establezcas como inicio predeterminado.") },
+        confirmButton = { TextButton(onClick = {
+            shortcutTarget = null
+            shortcutAccessDenied = false
+            runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_HOME_SETTINGS)) }
+        }) { Text("Elegir launcher") } },
+        dismissButton = { TextButton(onClick = { shortcutTarget = null; shortcutAccessDenied = false }) { Text("Cerrar") } }
+    )
     if (showLockAdminDialog) AlertDialog(
         onDismissRequest = { showLockAdminDialog = false },
         title = { Text("Doble toque para bloquear") },
@@ -1153,6 +1238,7 @@ fun AppIcon(
     showLabel: Boolean = true,
     onLaunch: () -> Unit = {},
     onLongPress: (() -> Unit)? = null,
+    onContextMenu: (() -> Unit)? = null,
     dragPayload: String? = null
 ) {
     val ctx = LocalContext.current
@@ -1166,6 +1252,10 @@ fun AppIcon(
                 runCatching { ctx.startActivity(app.intent) }
             },
             onLongClick = {
+                if (onContextMenu != null) {
+                    onContextMenu.invoke()
+                    return@combinedClickable
+                }
                 onLongPress?.invoke()
                 if (dragPayload != null) {
                     val clip = ClipData.newPlainText("nexo-app", dragPayload)
@@ -1502,7 +1592,7 @@ private fun AppWithCategoryMenu(
 
 }
 @Composable
-fun Drawer(apps: List<AppItem>, editingHome: Boolean, close: () -> Unit) {
+fun Drawer(apps: List<AppItem>, editingHome: Boolean, onAppLongPress: (AppItem) -> Unit = {}, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     val drawerListState = rememberLazyListState()
     var showOrganizer by remember { mutableStateOf(false) }
@@ -1610,7 +1700,12 @@ LaunchedEffect(apps) {
                 items(members.chunked(4), key = { row -> "$title-${row.joinToString { it.pkg }}" }) { row ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { app ->
-    AppIcon(app, 56.dp, Color.White, onLaunch = close, onLongPress = close, dragPayload = app.pkg)
+    val launcherApps = ctx.getSystemService(LauncherApps::class.java)
+    val canShowPlatformShortcuts = launcherApps?.hasShortcutHostPermission() == true
+    AppIcon(app, 56.dp, Color.White, onLaunch = close,
+        onLongPress = close,
+        onContextMenu = if (canShowPlatformShortcuts) ({ onAppLongPress(app) }) else null,
+        dragPayload = app.pkg)
 }
 
 
