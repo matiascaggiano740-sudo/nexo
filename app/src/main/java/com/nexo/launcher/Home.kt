@@ -99,24 +99,6 @@ private val PRIORITY = listOf(
 
 private val MESSAGES = listOf("com.google.android.apps.messaging", "com.android.mms", "com.samsung.android.messaging")
 
-private val FOLDERS = listOf(
-    "Social" to listOf(
-        "com.instagram.android", "com.facebook.katana", "com.facebook.orca", "com.zhiliaoapp.musically",
-        "com.ss.android.ugc.trill", "com.pinterest", "org.telegram.messenger", "com.twitter.android",
-        "com.instagram.barcelona", "com.snapchat.android", "com.facebook.lite",
-    ),
-    "Google" to listOf(
-        "com.google.android.apps.maps", "com.google.android.gm", "com.google.android.youtube",
-        "com.google.android.apps.docs", "com.google.android.googlequicksearchbox",
-        "com.google.android.apps.photos", "com.google.android.apps.translate",
-    ),
-    "Herramientas" to listOf(
-        "com.miui.calculator", "com.google.android.calculator", "com.android.deskclock",
-        "com.google.android.deskclock", "com.android.calendar", "com.google.android.calendar",
-        "com.miui.securitycenter", "com.miui.notes",
-    ),
-)
-
 private fun readUserFolders(ctx: android.content.Context): List<Pair<String, List<String>>> = runCatching {
     val raw = ctx.getSharedPreferences("nexo_home", 0).getString("user_folders", "[]") ?: "[]"
     val array = JSONArray(raw)
@@ -221,11 +203,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         homePackages.map { it.takeIf { value -> value != "-" } }
     }
 
-    val folders = FOLDERS.mapNotNull { (name, pkgs) ->
-        val found = pkgs.mapNotNull { p -> apps.find { it.pkg == p } }
-        if (found.isEmpty()) null else name to found
-    }
-
     val date = now.format(DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es")))
         .replaceFirstChar { it.uppercase() }
     val w = weather
@@ -289,7 +266,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Spacer(Modifier.height(16.dp))
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val widgetRows = pageWidgetIds.sumOf { id ->
-                val height = launcherActivity?.widgetHeightDp(id)?.coerceAtMost(320) ?: 132
+                val height = launcherActivity?.widgetHeightDp(id) ?: 132
                 ((height + 99) / 100).coerceAtLeast(1)
             }.coerceAtMost(7)
             homeCapacity = (28 - widgetRows * 4).coerceIn(0, 28)
@@ -325,7 +302,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     if (itemIndex < pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex]
                         var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
-                        val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId)?.coerceAtMost(320) ?: 132) + 99) / 100).coerceAtLeast(1) * 100
+                        val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId) ?: 132) + 99) / 100).coerceAtLeast(1) * 100
                         Box(Modifier.fillMaxWidth().height(widgetRowsHeight.dp)) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
                                 AndroidView(factory = { activity -> launcherActivity?.createWidgetHostView(widgetId) ?: android.widget.FrameLayout(activity) }, modifier = Modifier.fillMaxSize())
@@ -500,11 +477,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
                 }
             }
-            if (folders.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    folders.forEach { (name, list) -> FolderIcon(name, list, 56.dp, onClick = { openFolder = name }) }
-                }
-            }
             if (editingHome) TextButton(onClick = { showNewFolder = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text("＋ Carpeta", color = Color.White)
             }
@@ -549,7 +521,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val contents = if (name.startsWith("user:")) {
                 val key = name.removePrefix("user:")
                 userFolders.find { it.first == key }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-            } else folders.find { it.first == name }?.second.orEmpty()
+            } else emptyList()
             val userFolderName = name.removePrefix("user:").takeIf { name.startsWith("user:") }
             FolderPanel(name.removePrefix("user:"), contents, close = { openFolder = null }, onEdit = {
                 userFolderName?.let { folderName -> userFolders.find { it.first == folderName }?.let { folderEditor = it } }
@@ -579,6 +551,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     if (showNewFolder) UserFolderDialog(apps, null, onDismiss = { showNewFolder = false }, onSave = { name, packages ->
         val pages = homePages.map { it.toMutableList() }.toMutableList()
         while (pages.size <= currentPage) pages.add(mutableListOf())
+        var existingFolderSlot = -1
+        pages.forEachIndexed { pageIndex, savedPage -> savedPage.forEachIndexed { slotIndex, token ->
+            if (token == "folder:$name") {
+                if (pageIndex == currentPage && existingFolderSlot < 0) existingFolderSlot = slotIndex
+                savedPage[slotIndex] = "-"
+            }
+        } }
         val page = pages[currentPage]
         if (page.isEmpty() && currentPage == 0) page.addAll(priority.map { it.pkg })
         val pageWidgetRows = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
@@ -601,6 +580,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val targetPage = pages[currentPage]
         val emptySlot = targetPage.indexOfFirst { it == "-" }
         val folderSlot = when {
+            existingFolderSlot >= 0 -> existingFolderSlot
             reusableIndex >= 0 -> reusableIndex
             emptySlot >= 0 -> emptySlot
             targetPage.size < 28 -> targetPage.size.also { targetPage.add("-") }
