@@ -426,42 +426,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 val widgetRowsByPage = launcherActivity?.hostedWidgetIds.orEmpty().groupBy { id ->
                     launcherActivity?.hostedWidgetPages?.get(id) ?: 0
                 }.mapValues { (_, ids) -> ids.sumOf { id -> ((launcherActivity?.widgetHeightDp(id) ?: 132) + 99) / 100 } }
-                val sourcePages = homePages.ifEmpty { listOf(emptyList()) }
-                val migrated = mutableListOf<List<String>>()
-                val seenTokens = mutableSetOf<String>()
-                var carry = emptyList<String>()
-                var pageIndex = 0
-                while (pageIndex < sourcePages.size || carry.isNotEmpty()) {
-                    val savedPage = sourcePages.getOrNull(pageIndex).orEmpty()
-                    val source = if (pageIndex == 0 && savedPage.isEmpty()) defaultHomeApps.map { it.pkg } else savedPage
-                    val widgetCells = ((widgetRowsByPage[pageIndex] ?: 0) * 4).coerceIn(0, 28)
-                    val quoteCells = if (pageIndex == 0) 8 else 0
-                    val firstAvailable = (8 + widgetCells).coerceAtMost(28)
-                    val endAvailable = (28 - quoteCells).coerceAtLeast(firstAvailable)
-                    val normalized = MutableList(28) { "-" }
-                    val uniqueSource = source.mapIndexed { slot, token ->
-                        if (token.isNotBlank() && token != "-" && !seenTokens.add(token)) slot to "-" else slot to token
-                    }
-                    val tokens = uniqueSource.map { it.second }.filter { it.isNotBlank() && it != "-" }
-                    val hasReservedCellConflict = uniqueSource.any { (slot, token) ->
-                        token.isNotBlank() && token != "-" && slot !in firstAvailable until endAvailable
-                    }
-                    val remaining = mutableListOf<String>()
-                    if (carry.isNotEmpty() || hasReservedCellConflict) {
-                        // Reflow in original order only when a widget/quote takes cells or overflow arrives.
-                        (carry + tokens).forEach { token ->
-                            val free = (firstAvailable until endAvailable).firstOrNull { normalized[it] == "-" }
-                            if (free == null) remaining += token else normalized[free] = token
-                        }
-                    } else {
-                        uniqueSource.forEach { (slot, token) ->
-                            if (slot in 0 until 28 && token.isNotBlank() && token != "-") normalized[slot] = token
-                        }
-                    }
-                    carry = remaining
-                    migrated += normalized
-                    pageIndex++
-                }
+                val migrated = HomeGrid.normalize(
+                    pages = homePages,
+                    widgetRowsByPage = widgetRowsByPage,
+                    defaultPackages = defaultHomeApps.map { it.pkg },
+                )
                 if (migrated != homePages) {
                     homePages = migrated
                     homePackages = migrated.getOrNull(currentPage).orEmpty()
