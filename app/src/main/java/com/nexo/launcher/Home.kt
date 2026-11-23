@@ -795,7 +795,7 @@ LaunchedEffect(apps) {
                 items(members.chunked(4), key = { row -> row.joinToString { it.pkg } }) { row ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                         row.forEach { app ->
-    AppIcon(app, 56.dp, Color.White, onLaunch = close)
+    AppIcon(app, 56.dp, Color.White, onLaunch = close, dragPayload = if (editingHome) app.pkg else null)
 }
 
 
