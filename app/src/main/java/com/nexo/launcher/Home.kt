@@ -895,7 +895,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     city = saved.city
                     quote = saved.quote
                     photoTick++
-                    val widgetCounts = launcherActivity?.restoreWidgetPlacements(saved.widgetSpecs, saved.pages.size) ?: (0 to saved.widgetSpecs.length())
+                    val widgetCounts = launcherActivity?.restoreWidgetPlacements(saved.widgetSpecs, saved.pages.size) ?: Triple(0, saved.widgetSpecs.length(), 0)
                     pendingImportText = null
                     Toast.makeText(ctx, "Respaldo restaurado. ${widgetCounts.second} widget(s) hay que agregarlos de nuevo; se quitaron ${widgetCounts.third} widget(s) ajenos al respaldo.", Toast.LENGTH_LONG).show()
                 }.onFailure { Toast.makeText(ctx, it.message ?: "No se pudo restaurar el respaldo", Toast.LENGTH_LONG).show() }
