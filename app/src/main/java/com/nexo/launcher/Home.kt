@@ -348,7 +348,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         folderApps = folderApps,
                         onFolderClick = { if (folderName != null) openFolder = "user:$folderName" },
                         onFolderEdit = { if (folderName != null) userFolders.find { it.first == folderName }?.let { folderEditor = it } },
-                        index = logicalIndex,
+                        index = index,
                         editingHome = editingHome,
                         onLongPress = { editingHome = true },
                         onRemove = { pkg ->
