@@ -1,6 +1,7 @@
 package com.nexo.launcher
 
 import android.content.Intent
+import android.content.ClipData
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import androidx.core.content.ContextCompat
