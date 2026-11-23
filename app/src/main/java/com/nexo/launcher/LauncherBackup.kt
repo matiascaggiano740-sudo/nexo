@@ -55,8 +55,7 @@ object LauncherBackup {
                 .put("city", visual.getString("city", ""))
                 .put("quote", visual.getString("quote", DEFAULT_QUOTE))
                 .put("photoJpegBase64", photoData ?: JSONObject.NULL)
-                .put("manualCategories", catJson)
-                .put("iconTheme", context.getSharedPreferences("nexo_icon_settings", Context.MODE_PRIVATE).getString("theme", "poco")))
+                .put("manualCategories", catJson))
             .put("widgets", widgets)
             .put("notes", JSONObject()
                 .put("wallpaper", "System wallpaper is not included; Android manages it outside NEXO.")
@@ -142,9 +141,6 @@ object LauncherBackup {
         val categoryJson = settings.optJSONObject("manualCategories") ?: JSONObject()
         categoryJson.keys().forEach { key -> categoryJson.optString(key).takeIf(String::isNotBlank)?.let { catEditor.putString(key, it) } }
         catEditor.apply()
-        val theme = settings.optString("iconTheme", "poco")
-        context.getSharedPreferences("nexo_icon_settings", Context.MODE_PRIVATE).edit().putString("theme", theme).apply()
-
         return Restored(pages, dock, folders, root.optJSONArray("widgets") ?: JSONArray(), city, quote)
     }
 

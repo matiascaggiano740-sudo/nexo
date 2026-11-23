@@ -7,6 +7,15 @@
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="NEXO"
         android:theme="@style/Theme.Nexo">
+        <service
+            android:name=".NotificationDotListener"
+            android:label="NEXO: indicadores de notificación"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"
