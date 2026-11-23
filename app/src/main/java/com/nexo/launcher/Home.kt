@@ -674,7 +674,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             homePages = expanded
                             currentPage = expanded.lastIndex
                             homePackages = emptyList()
-                        }, testTag = "add-home-page")
+                        })
                         HomeEditAction("+ Carpeta", onClick = { showNewFolder = true })
                         Box {
                             HomeEditAction("Más", onClick = { showHomeMoreActions = true })
