@@ -74,6 +74,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -184,6 +185,46 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             dock = selectedDock.mapNotNull { pkg -> list.find { it.pkg == pkg } }
             apps = list
         }
+    }
+    val packageRefreshScope = rememberCoroutineScope()
+    DisposableEffect(ctx) {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                val changedPackage = intent?.data?.schemeSpecificPart
+                val removed = intent?.let { it.action == Intent.ACTION_PACKAGE_REMOVED && !it.getBooleanExtra(Intent.EXTRA_REPLACING, false) } == true
+                packageRefreshScope.launch {
+                    val latest = withContext(Dispatchers.IO) { loadApps(ctx) }
+                    apps = latest
+                    dock = dockPackages.mapNotNull { pkg -> latest.find { it.pkg == pkg } }
+                    if (removed && changedPackage != null) {
+                        val previousFolders = userFolders
+                        userFolders = userFolders.map { it.first to it.second.filterNot { pkg -> pkg == changedPackage } }
+                            .filterNot { it.second.isEmpty() }
+                        val removedFolders = previousFolders.map { it.first }.toSet() - userFolders.map { it.first }.toSet()
+                        val pages = homePages.map { page -> page.map { token ->
+                            if (token == changedPackage || (token.startsWith("folder:") && token.removePrefix("folder:") in removedFolders)) "-" else token
+                        } }
+                        homePages = pages
+                        homePackages = pages.getOrNull(currentPage).orEmpty()
+                        writeUserFolders(ctx, userFolders)
+                        dockPackages = dockPackages.map { if (it == changedPackage) "-" else it }
+                        dock = dockPackages.mapNotNull { pkg -> latest.find { it.pkg == pkg } }
+                        ctx.getSharedPreferences("nexo_home", 0).edit()
+                            .putString("pages", pages.joinToString("~") { it.joinToString("|") })
+                            .putString("packages", pages.firstOrNull().orEmpty().joinToString("|"))
+                            .putString("dock_packages", dockPackages.joinToString("|")).apply()
+                    }
+                }
+            }
+        }
+        ContextCompat.registerReceiver(ctx, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { runCatching { ctx.unregisterReceiver(receiver) } }
     }
     LaunchedEffect(Unit) {
         while (true) { now = LocalDateTime.now(); delay(60_000L - System.currentTimeMillis() % 60_000L) }
