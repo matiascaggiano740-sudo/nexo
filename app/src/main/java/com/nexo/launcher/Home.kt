@@ -254,7 +254,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        if (w != null) "\({w.label} · \){w.city}"
+                                                if (w != null) "\({w.label} · \){w.city}"
                         else if (city.isBlank()) "Toca para elegir tu ciudad"
                         else "Cargando clima...",
                         color = Color.White,
