@@ -29,7 +29,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -134,6 +133,9 @@ fun Home() {
     val ctx = LocalContext.current
     val launcherActivity = ctx as? MainActivity
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
+    val defaultHomeApps = PRIORITY.mapNotNull { group ->
+        group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
+    }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
     var dockPackages by remember {
         mutableStateOf(ctx.getSharedPreferences("nexo_home", 0).getString("dock_packages", "")
@@ -166,7 +168,6 @@ fun Home() {
     var shortcutTarget by remember { mutableStateOf<AppItem?>(null) }
     var shortcutRows by remember { mutableStateOf<List<ShortcutInfo>>(emptyList()) }
     var shortcutAccessDenied by remember { mutableStateOf(false) }
-    var homeCapacity by remember { mutableIntStateOf(28) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
@@ -184,6 +185,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         val pages = homePages.map { it.toMutableList() }.toMutableList()
         while (pages.size <= currentPage) pages.add(mutableListOf())
         val page = pages[currentPage]
+        if (currentPage == 0 && page.isEmpty()) page.addAll(defaultHomeApps.map { it.pkg })
         if (app.pkg in page) {
             Toast.makeText(ctx, "La aplicación ya está en esta página", Toast.LENGTH_SHORT).show()
             return
@@ -327,10 +329,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     BackHandler(openFolder != null) { openFolder = null }
     BackHandler(editingHome && !drawer && openFolder == null) { editingHome = false }
 
-            val priority = if (homePackages.isEmpty()) {
-        PRIORITY.mapNotNull { group ->
-            group.firstNotNullOfOrNull { pkg -> apps.find { it.pkg == pkg } }
-        }
+    val priority = if (homePackages.isEmpty() && currentPage == 0) {
+        defaultHomeApps
     } else {
         homePackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
     }
@@ -350,22 +350,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
-            .then(
-                if (!drawer) {
-                    Modifier.pointerInput(drawer) {
-                        var startY = 0f
-                        detectVerticalDragGestures(
-                            onDragStart = { startY = it.y },
-                            onVerticalDrag = { change, dy ->
-                                if (startY >= size.height * 0.72f && dy < -25f) {
-                                    drawer = true
-                                    change.consume()
-                                }
-                            }
-                        )
-                    }
-                } else Modifier
-            )
             .graphicsLayer { translationX = pageSwipeX }
             .pointerInput(homePages.size, editingHome, drawer) {
                 if (!editingHome && !drawer && homePages.size > 1) {
@@ -452,24 +436,55 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val quoteRows = if (currentPage == 0) 2 else 0
             val quoteItemCount = if (quoteRows > 0) 1 else 0
             val widgetCellOffset = nativeWidgetRows * 4
-            homeCapacity = (28 - widgetCellOffset - quoteRows * 4).coerceIn(0, 28)
-            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) priority.size else homePackages.count { it != "-" }) + quoteRows * 4
-            LaunchedEffect(currentPage, widgetCellOffset, apps) {
+            val quoteCellCount = quoteRows * 4
+            val pageCapacity = (28 - widgetCellOffset - quoteCellCount).coerceIn(0, 28)
+            val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) priority.size else homePackages.count { it != "-" }) + quoteCellCount
+            val widgetLayoutKey = launcherActivity?.hostedWidgetIds?.joinToString(",") { id ->
+                "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}"
+            }.orEmpty()
+            LaunchedEffect(homePages, widgetLayoutKey, apps) {
                 if (apps.isEmpty()) return@LaunchedEffect
-                val saved = homePages.getOrNull(currentPage).orEmpty()
-                val source = if (saved.isEmpty() && currentPage == 0) priority.map { it.pkg } else saved
-                val compacted = (List(widgetCellOffset.coerceAtMost(28)) { "-" } + source.filter { it != "-" }.take(homeCapacity))
-                val normalized = (compacted + List((28 - compacted.size).coerceAtLeast(0)) { "-" }).take(28)
-                if (saved != normalized) {
-                    val updated = homePages.toMutableList().apply {
-                        while (size <= currentPage) add(emptyList())
-                        this[currentPage] = normalized
+                val widgetRowsByPage = launcherActivity?.hostedWidgetIds.orEmpty().groupBy { id ->
+                    launcherActivity?.hostedWidgetPages?.get(id) ?: 0
+                }.mapValues { (_, ids) -> ids.sumOf { id -> ((launcherActivity?.widgetHeightDp(id) ?: 132) + 99) / 100 } }
+                val sourcePages = homePages.ifEmpty { listOf(emptyList()) }
+                val migrated = mutableListOf<List<String>>()
+                var carry = emptyList<String>()
+                var pageIndex = 0
+                while (pageIndex < sourcePages.size || carry.isNotEmpty()) {
+                    val savedPage = sourcePages.getOrNull(pageIndex).orEmpty()
+                    val source = if (pageIndex == 0 && savedPage.isEmpty()) defaultHomeApps.map { it.pkg } else savedPage
+                    val widgetCells = ((widgetRowsByPage[pageIndex] ?: 0) * 4).coerceIn(0, 28)
+                    val quoteCells = if (pageIndex == 0) 8 else 0
+                    val firstAvailable = widgetCells
+                    val endAvailable = (28 - quoteCells).coerceAtLeast(firstAvailable)
+                    val normalized = MutableList(28) { "-" }
+                    val tokens = source.filter { it.isNotBlank() && it != "-" }
+                    val hasReservedCellConflict = source.withIndex().any { (slot, token) ->
+                        token.isNotBlank() && token != "-" && slot !in firstAvailable until endAvailable
                     }
-                    homePages = updated
-                    homePackages = normalized
+                    val remaining = mutableListOf<String>()
+                    if (carry.isNotEmpty() || hasReservedCellConflict) {
+                        // Reflow in original order only when a widget/quote takes cells or overflow arrives.
+                        (carry + tokens).forEach { token ->
+                            val free = (firstAvailable until endAvailable).firstOrNull { normalized[it] == "-" }
+                            if (free == null) remaining += token else normalized[free] = token
+                        }
+                    } else {
+                        source.forEachIndexed { slot, token ->
+                            if (token.isNotBlank() && token != "-") normalized[slot] = token
+                        }
+                    }
+                    carry = remaining
+                    migrated += normalized
+                    pageIndex++
+                }
+                if (migrated != homePages) {
+                    homePages = migrated
+                    homePackages = migrated.getOrNull(currentPage).orEmpty()
                     ctx.getSharedPreferences("nexo_home", 0).edit()
-                        .putString("packages", updated.firstOrNull().orEmpty().joinToString("|"))
-                        .putString("pages", updated.joinToString("~") { it.joinToString("|") }).apply()
+                        .putString("packages", migrated.firstOrNull().orEmpty().joinToString("|"))
+                        .putString("pages", migrated.joinToString("~") { it.joinToString("|") }).apply()
                 }
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -484,15 +499,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     verticalArrangement = Arrangement.spacedBy(gridGap)
                 ) {
                     items(
-                        count = pageWidgetIds.size + homeCapacity + quoteItemCount,
+                        count = pageWidgetIds.size + pageCapacity + quoteItemCount,
                         key = { index ->
                             when {
                                 index < pageWidgetIds.size -> "widget-${pageWidgetIds[index]}"
-                                quoteItemCount > 0 && index == pageWidgetIds.size + homeCapacity -> "quote-widget-page-0"
+                                quoteItemCount > 0 && index == pageWidgetIds.size + pageCapacity -> "quote-widget-page-0"
                                 else -> "home-cell-${index - pageWidgetIds.size}"
                             }
                         },
-                        span = { index -> if (index < pageWidgetIds.size || (quoteItemCount > 0 && index == pageWidgetIds.size + homeCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
+                        span = { index -> if (index < pageWidgetIds.size || (quoteItemCount > 0 && index == pageWidgetIds.size + pageCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
                     ) { itemIndex ->
                     if (itemIndex < pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex]
@@ -509,7 +524,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     DropdownMenu(expanded = showWidgetPageMenu, onDismissRequest = { showWidgetPageMenu = false }) {
                                         homePages.indices.forEach { destination -> DropdownMenuItem(
                                             text = { Text("Página ${destination + 1}") },
-                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) priority.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
+                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) defaultHomeApps.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
                                         ) }
                                     }
                                 }
@@ -519,7 +534,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }) { Text("↓") }
                             }
                         }
-                    } else if (quoteItemCount > 0 && itemIndex == pageWidgetIds.size + homeCapacity) {
+                    } else if (quoteItemCount > 0 && itemIndex == pageWidgetIds.size + pageCapacity) {
                         QuoteCard(quote, photo, onClick = { editCard = true }, height = quoteHeight,
                             modifier = Modifier.fillMaxWidth())
                     } else {
@@ -538,7 +553,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = logicalIndex,
                         editingHome = editingHome,
                         cellHeight = cellHeight,
-                        iconSize = (cellHeight - if (cellHeight >= 48.dp) 15.dp else 4.dp).coerceIn(20.dp, 60.dp),
+                        iconSize = (cellHeight - if (cellHeight >= 58.dp) 18.dp else 4.dp).coerceIn(40.dp, 56.dp),
                         onLongPress = { editingHome = true },
                         onDoubleTapEmpty = {
                             if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
@@ -570,10 +585,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             val draggedFolderName = draggedPkg.removePrefix("folder:").takeIf { draggedPkg.startsWith("folder:") }
                             val draggedFolder = draggedFolderName?.let { name -> userFolders.find { it.first == name } }
                             val draggedAllowed = if (draggedFolderName != null) draggedFolder != null else apps.any { it.pkg == draggedPkg }
-                            if (draggedAllowed && targetIndex in widgetCellOffset until (widgetCellOffset + homeCapacity)) {
+                            if (draggedAllowed && targetIndex in widgetCellOffset until (widgetCellOffset + pageCapacity)) {
                                 val pages = homePages.map { it.toMutableList() }.toMutableList()
                                 if (pages.isNotEmpty() && pages[0].isEmpty()) {
-                                    pages[0].addAll(priority.map { it.pkg })
+                                    pages[0].addAll(defaultHomeApps.map { it.pkg })
                                 }
                                 while (pages.size <= currentPage) pages.add(mutableListOf())
                                 val dest = pages[currentPage]
@@ -713,7 +728,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 val valid = isFolder || apps.any { it.pkg == token }
                                 if (valid && page in homePages.indices) {
                                     val pages = homePages.map { it.toMutableList() }.toMutableList()
-                                    if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(priority.map { it.pkg })
+                                    if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(defaultHomeApps.map { it.pkg })
                                     val sourcePage = pages.indexOfFirst { token in it }
                                     val dest = pages[page]
                                     val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
@@ -840,11 +855,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 timeText = now.format(DateTimeFormatter.ofPattern("HH:mm")),
                 dateText = date,
                 weatherText = if (w != null) "${w.temp}° · ${w.label} · ${w.city}" else city.ifBlank { "Tocá para elegir ciudad" },
-                defaultPackages = priority.map { it.pkg },
+                defaultPackages = defaultHomeApps.map { it.pkg },
                 onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
-                    val count = homePages.getOrNull(currentPage).orEmpty().count { it != "-" } + if (currentPage == 0) 8 else 0
+                    val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) priority.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + if (currentPage == 0) 8 else 0
                     editingHome = false
                     launcherActivity?.launchWidgetPicker(currentPage, count)
                 },
@@ -1040,7 +1055,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     if (showNewFolder) UserFolderDialog(apps, null, onDismiss = { showNewFolder = false }, onSave = { name, packages ->
         val pages = homePages.map { it.toMutableList() }.toMutableList()
         while (pages.size <= currentPage) pages.add(mutableListOf())
-        if (currentPage == 0 && pages[0].isEmpty()) pages[0].addAll(priority.map { it.pkg })
+        if (currentPage == 0 && pages[0].isEmpty()) pages[0].addAll(defaultHomeApps.map { it.pkg })
         var existingFolderSlot = -1
         pages.forEachIndexed { pageIndex, savedPage -> savedPage.forEachIndexed { slotIndex, token ->
             if (token == "folder:$name") {
@@ -1049,7 +1064,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
         } }
         val page = pages[currentPage]
-        if (page.isEmpty() && currentPage == 0) page.addAll(priority.map { it.pkg })
+        if (page.isEmpty() && currentPage == 0) page.addAll(defaultHomeApps.map { it.pkg })
         var reusableIndex = -1
         pages.forEachIndexed { pageIndex, savedPage ->
             savedPage.forEachIndexed { slotIndex, token ->
@@ -1766,8 +1781,8 @@ private fun HomeAppCell(
         if (app != null) {
             AppIcon(
                 app, iconSize, Color.White,
-                showLabel = cellHeight >= 48.dp,
-                labelFontSize = if (cellHeight < 58.dp) 8.sp else 10.sp,
+                showLabel = cellHeight >= 58.dp,
+                labelFontSize = if (cellHeight < 68.dp) 10.sp else 11.sp,
                 onLongPress = onLongPress,
                 dragPayload = "home:${app.pkg}"
             )
@@ -2079,7 +2094,7 @@ LaunchedEffect(apps) {
 
 
                                                 repeat(4 - row.size) { Spacer(Modifier.width(68.dp)) }
- 
+
                     }
 
                 }
