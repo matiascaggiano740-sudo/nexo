@@ -233,7 +233,39 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White, fontSize = 80.sp,
                 fontFamily = FontFamily.Serif, fontWeight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp))
             Text(date, color = Color.White, fontSize = 15.sp)
-                        LazyVerticalGrid(
+                                    Spacer(Modifier.height(12.dp))
+            Surface(
+                color = Glass,
+                shape = RoundedCornerShape(22.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .clickable { editCity = true }
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (w != null) "${w.temp}°" else "--°",
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontFamily = FontFamily.Serif
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        if (w != null) "\({w.label} · \){w.city}"
+                        else if (city.isBlank()) "Toca para elegir tu ciudad"
+                        else "Cargando clima...",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 modifier = Modifier
                     .weight(1f)
