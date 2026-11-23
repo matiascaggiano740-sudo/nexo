@@ -190,7 +190,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun widgetHeightDp(id: Int): Int = hostedWidgetHeights[id]
-        ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight?.coerceIn(96, 320) ?: 132
+        ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight?.coerceAtLeast(96) ?: 132
 
     fun canResizeWidget(id: Int): Boolean {
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return false
@@ -204,7 +204,10 @@ class MainActivity : ComponentActivity() {
         val pageRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page && it != id }
             .sumOf { other -> (widgetHeightDp(other) + 99) / 100 }
         val minHeight = info.minResizeHeight.takeIf { it > 0 } ?: info.minHeight.coerceAtLeast(90)
-        val maxHeight = (info.maxResizeHeight.takeIf { it > 0 } ?: 700).coerceAtLeast(minHeight)
+        if (pageRows + (minHeight + 99) / 100 > 7) return
+        val pageMaxHeight = ((7 - pageRows).coerceAtLeast(1) * 100)
+        val declaredMaxHeight = info.maxResizeHeight.takeIf { it > 0 } ?: 700
+        val maxHeight = minOf(declaredMaxHeight, pageMaxHeight).coerceAtLeast(minHeight)
         val newHeight = (widgetHeightDp(id) + deltaDp).coerceIn(minHeight, maxHeight)
         if (pageRows + (newHeight + 99) / 100 > 7) {
             Toast.makeText(this, "No hay suficientes celdas libres para agrandar el widget", Toast.LENGTH_SHORT).show()

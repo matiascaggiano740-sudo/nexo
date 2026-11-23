@@ -641,6 +641,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     if (showNewFolder) UserFolderDialog(apps, null, onDismiss = { showNewFolder = false }, onSave = { name, packages ->
         val pages = homePages.map { it.toMutableList() }.toMutableList()
         while (pages.size <= currentPage) pages.add(mutableListOf())
+        if (currentPage == 0 && pages[0].isEmpty()) pages[0].addAll(priority.map { it.pkg })
         var existingFolderSlot = -1
         pages.forEachIndexed { pageIndex, savedPage -> savedPage.forEachIndexed { slotIndex, token ->
             if (token == "folder:$name") {
@@ -737,8 +738,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         },
         onDelete = { index ->
             if (index in homePages.indices && homePages[index].all { it == "-" } && (launcherActivity?.hostedWidgetPages?.values?.none { it == index } ?: true)) {
+                val previousCurrent = currentPage
                 val mutable = homePages.toMutableList().also { it.removeAt(index) }.ifEmpty { mutableListOf(emptyList()) }
-                homePages = mutable; currentPage = currentPage.coerceAtMost(mutable.lastIndex); homePackages = mutable[currentPage]
+                currentPage = when {
+                    previousCurrent > index -> previousCurrent - 1
+                    previousCurrent == index -> index.coerceAtMost(mutable.lastIndex)
+                    else -> previousCurrent
+                }
+                homePages = mutable; homePackages = mutable[currentPage]
                 launcherActivity?.deleteWidgetPage(index)
                 ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", mutable.joinToString("~") { it.joinToString("|") }).putString("packages", mutable.firstOrNull().orEmpty().joinToString("|")).apply()
             }
