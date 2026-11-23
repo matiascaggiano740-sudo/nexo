@@ -603,6 +603,56 @@ fun AppIcon(
         }
     }
 }
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun HomeAppCell(
+    app: AppItem?,
+    index: Int,
+    editingHome: Boolean,
+    onLongPress: () -> Unit,
+    onDrop: (String, Int) -> Unit
+) {
+    val dropTarget = remember(editingHome, index, onDrop) {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                if (!editingHome) return false
+
+                val clip = event.toAndroidDragEvent().clipData ?: return false
+                if (clip.itemCount == 0) return false
+
+                val pkg = clip.getItemAt(0).text?.toString() ?: return false
+                onDrop(pkg, index)
+                return true
+            }
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(90.dp)
+            .dragAndDropTarget(
+                shouldStartDragAndDrop = { event ->
+                    editingHome &&
+                        event.toAndroidDragEvent().clipDescription
+                            ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
+                },
+                target = dropTarget
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (app != null) {
+            AppIcon(
+                app,
+                60.dp,
+                Color.White,
+                onLongPress = onLongPress,
+                dragPayload = if (editingHome) app.pkg else null
+            )
+        }
+    }
+}
+
 private val SOCIAL_PACKAGES = setOf(
     "com.whatsapp",
     "com.whatsapp.w4b",
