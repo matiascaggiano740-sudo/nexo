@@ -381,13 +381,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     val targetFolder = userFolders.find { it.first == folderName }
                                     if (targetFolder != null) {
                                         val addPackages = draggedFolder?.second ?: listOf(draggedPkg)
-                                        val updatedFolders = userFolders.map { folder ->
+                                        val updatedFolders = userFolders.mapNotNull { folder ->
                                             when (folder.first) {
                                                 folderName -> folder.first to (folder.second + addPackages).distinct()
-                                                draggedFolderName -> folder.first to folder.second
-                                                else -> folder
+                                                draggedFolderName -> null
+                                                else -> folder.second.filterNot { it in addPackages }.takeIf { it.isNotEmpty() }?.let { remaining -> folder.first to remaining }
                                             }
-                                        }.filterNot { draggedFolderName != null && it.first == draggedFolderName }
+                                        }
+                                        val removedNames = userFolders.map { it.first }.toSet() - updatedFolders.map { it.first }.toSet()
+                                        pages.forEach { page -> page.indices.forEach { index -> if (page[index].startsWith("folder:") && page[index].removePrefix("folder:") in removedNames) page[index] = "-" } }
                                         userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
                                         if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
                                     }
@@ -420,7 +422,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 } else if (sourcePage >= 0) {
                                     val sourceSlots = pages[sourcePage]
                                     val sourceIndex = sourceSlots.indexOf(draggedPkg)
-                                    sourceSlots[sourceIndex] = "-"
+                                    val displaced = dest[targetIndex]
+                                    sourceSlots[sourceIndex] = displaced ?: "-"
                                     dest[targetIndex] = draggedPkg
                                 } else {
                                     val emptyIndex = dest.indexOfFirst { it == "-" }
@@ -560,14 +563,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         } }
         val page = pages[currentPage]
         if (page.isEmpty() && currentPage == 0) page.addAll(priority.map { it.pkg })
-        val pageWidgetRows = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
-            ?.sumOf { id -> (launcherActivity.widgetHeightDp(id) + 99) / 100 } ?: 0
-        val occupied = page.count { it != "-" } + pageWidgetRows * 4
-        val empty = page.indexOfFirst { it == "-" }
-        if (empty >= 0 && occupied < 28) page[empty] = "folder:$name"
-        else if (page.size + pageWidgetRows * 4 < 28) page.add("folder:$name")
-        else Toast.makeText(ctx, "No hay una celda libre para la carpeta", Toast.LENGTH_SHORT).show()
-        if (homePackages.isEmpty() && currentPage == 0 && page.isEmpty()) page.addAll(priority.map { it.pkg })
         var reusableIndex = -1
         pages.forEachIndexed { pageIndex, savedPage ->
             savedPage.forEachIndexed { slotIndex, token ->
@@ -588,17 +583,36 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }
         if (folderSlot < 0) {
             Toast.makeText(ctx, "No hay una celda libre para la carpeta", Toast.LENGTH_SHORT).show()
-        } else targetPage[folderSlot] = "folder:$name"
-        val updatedFolders = userFolders.filterNot { it.first == name } + (name to packages)
-        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-        homePages = pages.map { it.toList() }; homePackages = homePages.getOrNull(currentPage).orEmpty()
-        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
-        showNewFolder = false
+        } else {
+            targetPage[folderSlot] = "folder:$name"
+            val remainingFolders = userFolders.filterNot { it.first == name }.map { folder ->
+                folder.first to folder.second.filterNot { it in packages }
+            }.filterNot { it.second.isEmpty() }
+            val updatedFolders = remainingFolders + (name to packages.distinct())
+            val deletedNames = userFolders.map { it.first }.toSet() - updatedFolders.map { it.first }.toSet()
+            pages.forEach { page -> page.indices.forEach { index ->
+                if (page[index].startsWith("folder:") && page[index].removePrefix("folder:") in deletedNames) page[index] = "-"
+            } }
+            userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
+            homePages = pages.map { it.toList() }; homePackages = homePages.getOrNull(currentPage).orEmpty()
+            ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
+            showNewFolder = false
+        }
     })
     folderEditor?.let { existing -> UserFolderDialog(apps, existing, onDismiss = { folderEditor = null }, onSave = { name, packages ->
-        val updated = userFolders.filterNot { it.first == existing.first || it.first == name } + (name to packages)
+        val baseFolders = userFolders.filterNot { it.first == existing.first || it.first == name }.map { folder ->
+            folder.first to folder.second.filterNot { it in packages }
+        }.filterNot { it.second.isEmpty() }
+        val updated = baseFolders + (name to packages.distinct())
+        val removedNames = userFolders.map { it.first }.toSet() - updated.map { it.first }.toSet()
+        val renamedPages = homePages.map { page -> page.map { token ->
+            when {
+                token == "folder:${existing.first}" -> "folder:$name"
+                token.startsWith("folder:") && token.removePrefix("folder:") in removedNames -> "-"
+                else -> token
+            }
+        } }
         userFolders = updated; writeUserFolders(ctx, updated)
-        val renamedPages = homePages.map { page -> page.map { if (it == "folder:${existing.first}") "folder:$name" else it } }
         homePages = renamedPages; homePackages = renamedPages.getOrNull(currentPage).orEmpty()
         ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", renamedPages.joinToString("~") { it.joinToString("|") }).putString("packages", renamedPages.firstOrNull().orEmpty().joinToString("|")).apply()
         folderEditor = null
