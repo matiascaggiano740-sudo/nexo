@@ -178,7 +178,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         .replaceFirstChar { it.uppercase() }
     val w = weather
 
-    val homeDropTarget = remember(editingHome, homePackages, priority, apps) {
+        val homeDropTarget = remember(editingHome, homePackages, priority, apps, homeCapacity) {
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 if (!editingHome) return false
@@ -187,33 +187,32 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 if (clip.itemCount == 0) return false
 
                 val pkg = clip.getItemAt(0).text?.toString() ?: return false
-                                if (pkg !in current) {
+                if (apps.none { it.pkg == pkg }) return false
+
+                val current = if (homePackages.isEmpty()) {
+                    priority.map { it.pkg }
+                } else {
+                    homePackages
+                }
+
+                if (pkg !in current) {
                     if (current.size >= homeCapacity) {
                         Toast.makeText(ctx, "No hay espacio libre en inicio", Toast.LENGTH_SHORT).show()
                         return true
                     }
-                    val updated = current + pkg
-                    ctx.getSharedPreferences("nexo_home", 0)
-                        .edit()
-                        .putString("packages", updated.joinToString("|"))
-                        .apply()
-                    homePackages = updated
-                }
-                if (pkg !in current) {
-                    val updated = current + pkg
-                    ctx.getSharedPreferences("nexo_home", 0)
-                        .edit()
-                        .putString("packages", updated.joinToString("|"))
-                        .apply()
-                    homePackages = updated
-                }
 
+                    val updated = current + pkg
+                    ctx.getSharedPreferences("nexo_home", 0)
+                        .edit()
+                        .putString("packages", updated.joinToString("|"))
+                        .apply()
+                    homePackages = updated
+                }
                 drawer = false
                 return true
             }
         }
-    }
-
+        }
     Box(
         Modifier.fillMaxSize()
             .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
