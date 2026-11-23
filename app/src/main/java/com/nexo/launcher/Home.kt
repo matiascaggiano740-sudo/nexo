@@ -218,7 +218,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         Text(if (editingHome) "✓" else "⋮", color = Color.White, fontSize = 25.sp)
                 }
                         }
-            Spacer(Modifier.height(10.dp))
+                        }
+                            Spacer(Modifier.height(10.dp))
             Surface(color = Glass, shape = RoundedCornerShape(32.dp), modifier = Modifier.fillMaxWidth().height(76.dp)) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     dock.forEach { AppIcon(it, 52.dp, Color.White, showLabel = false) }
