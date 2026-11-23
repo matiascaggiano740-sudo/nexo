@@ -379,7 +379,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onDrop = { draggedPkg, targetIndex ->
                             if (apps.any { it.pkg == draggedPkg } && targetIndex in 0 until homeCapacity) {
                                 val pages = homePages.map { it.toMutableList() }.toMutableList()
-                                if (pages.isNotEmpty() && pages[0].isEmpty() && currentPage == 0) {
+                                if (pages.isNotEmpty() && pages[0].isEmpty()) {
                                     pages[0].addAll(priority.map { it.pkg })
                                 }
                                 while (pages.size <= currentPage) pages.add(mutableListOf())
@@ -476,15 +476,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     }
                     if (editingHome) TextButton(onClick = { showPageManager = true }) { Text("Administrar", color = Color.White) }
                     if (editingHome) TextButton(onClick = { editingHome = false }) { Text("Listo", color = Color.White) }
-                    if (editingHome && currentPage > 0 && homePackages.isEmpty()) TextButton(onClick = {
-                        val reduced = homePages.toMutableList().also { it.removeAt(currentPage) }
-                        ctx.getSharedPreferences("nexo_home", 0).edit()
-                            .putString("pages", reduced.joinToString("~") { it.joinToString("|") })
-                            .putString("packages", reduced.firstOrNull().orEmpty().joinToString("|")).apply()
-                        homePages = reduced
-                        currentPage = (currentPage - 1).coerceAtLeast(0)
-                        homePackages = reduced.getOrNull(currentPage).orEmpty()
-                    }) { Text("− Página", color = Color.White) }
                 }
             }
             if (folders.isNotEmpty()) {
@@ -632,7 +623,7 @@ private fun UserFolderDialog(
     val selected = remember(existing) { mutableStateListOf<String>().apply { addAll(existing?.second.orEmpty()) } }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Nueva carpeta" else "Editar carpeta") },
         text = { Column {
-            OutlinedTextField(name, { name = it.take(24) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { value -> name = value.filter { it != '|' && it != '~' }.take(24) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                 apps.sortedBy { it.label.lowercase() }.forEach { app ->
