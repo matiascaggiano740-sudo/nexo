@@ -706,7 +706,7 @@ private fun HomeAppCell(
             .then(
                 if (app == null) {
                     Modifier.pointerInput(index) {
-                        detectTapGestures(onLongPress = onLongPress)
+                        detectTapGestures(onLongPress = { onLongPress() })
                     }
                 } else Modifier
             )
