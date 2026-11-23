@@ -104,17 +104,17 @@ fun Home() {
     val ctx = LocalContext.current
     var apps by remember { mutableStateOf(emptyList<AppItem>()) }
     var dock by remember { mutableStateOf(emptyList<AppItem>()) }
-        var homePackages by remember {
+            var homePackages by remember {
         mutableStateOf(
             ctx.getSharedPreferences("nexo_home", 0)
                 .getString("packages", "")
                 ?.split("|")
                 ?.filter { it.isNotBlank() }
-                    var homeCapacity by remember { mutableIntStateOf(0) }
-    val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
-            ?: emptyList()
+                ?: emptyList()
         )
-        }
+    }
+    var homeCapacity by remember { mutableIntStateOf(0) }
+    val homeRowHeightPx = with(LocalDensity.current) { 90.dp.roundToPx() }
         var editHome by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
     var editingHome by remember { mutableStateOf(false) }
