@@ -48,10 +48,18 @@ class HomeNavigationTest {
         Log.i(tag, "SNAPSHOT_END label=$label")
     }
 
+    private fun performDrawerOpenClickWithDiagnostics(label: String) {
+        val node = composeRule.onNodeWithTag("open-app-drawer").fetchSemanticsNode()
+        val bounds = node.boundsInWindow
+        Log.i("NEXO_DRAWER_DIAG", "CLICK_TARGET label=$label tag=open-app-drawer boundsInWindow=$bounds centerX=${bounds.center.x} centerY=${bounds.center.y} config=${node.config}")
+        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        Log.i("NEXO_DRAWER_DIAG", "PERFORM_CLICK_RETURNED label=$label tag=open-app-drawer")
+    }
+
     @Test
     fun appDrawerOpensAndClosesFromExplicitControls() {
         logDrawerDiagnosticSnapshot("explicit-before-open-click")
-        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        performDrawerOpenClickWithDiagnostics("explicit")
         logDrawerDiagnosticSnapshot("explicit-after-open-click")
         composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
         composeRule.onNodeWithTag("close-app-drawer").performClick()
@@ -97,7 +105,7 @@ class HomeNavigationTest {
     @Test
     fun systemBackClosesTheAppDrawer() {
         logDrawerDiagnosticSnapshot("back-before-open-click")
-        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        performDrawerOpenClickWithDiagnostics("back")
         logDrawerDiagnosticSnapshot("back-after-open-click")
         composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
         composeRule.activityRule.scenario.onActivity { activity ->
