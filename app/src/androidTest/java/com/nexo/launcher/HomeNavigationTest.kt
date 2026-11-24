@@ -1,6 +1,8 @@
 package com.nexo.launcher
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onRoot
+import android.util.Log
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -20,9 +22,36 @@ class HomeNavigationTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
+    private fun logDrawerDiagnosticSnapshot(label: String) {
+        val tag = "NEXO_DRAWER_DIAG"
+        Log.i(tag, "SNAPSHOT_BEGIN label=$label")
+        runCatching {
+            composeRule.activityRule.scenario.onActivity { activity ->
+                val decor = activity.window.decorView
+                Log.i(tag, "ACTIVITY label=$label class=${activity.javaClass.name} lifecycle=${activity.lifecycle.currentState} finishing=${activity.isFinishing} destroyed=${activity.isDestroyed} windowFocus=${activity.hasWindowFocus()} decorFocus=${decor.hasWindowFocus()} decorFocused=${decor.isFocused} attached=${decor.isAttachedToWindow} shown=${decor.isShown}")
+            }
+        }.onFailure { Log.e(tag, "ACTIVITY_SNAPSHOT_FAILED label=$label", it) }
+        runCatching {
+            composeRule.onRoot(useUnmergedTree = true).printToLog(tag)
+        }.onFailure { Log.e(tag, "SEMANTICS_TREE_UNAVAILABLE label=$label", it) }
+        listOf("open-app-drawer", "close-app-drawer").forEach { nodeTag ->
+            runCatching {
+                val nodes = composeRule.onAllNodesWithTag(nodeTag, useUnmergedTree = true)
+                    .fetchSemanticsNodes(atLeastOneRootExpected = false)
+                Log.i(tag, "TAG_NODES label=$label tag=$nodeTag count=${nodes.size}")
+                nodes.forEachIndexed { index, node ->
+                    Log.i(tag, "TAG_NODE label=$label tag=$nodeTag index=$index boundsInRoot=${node.boundsInRoot} boundsInWindow=${node.boundsInWindow} config=${node.config}")
+                }
+            }.onFailure { Log.e(tag, "TAG_NODE_SNAPSHOT_FAILED label=$label tag=$nodeTag", it) }
+        }
+        Log.i(tag, "SNAPSHOT_END label=$label")
+    }
+
     @Test
     fun appDrawerOpensAndClosesFromExplicitControls() {
+        logDrawerDiagnosticSnapshot("explicit-before-open-click")
         composeRule.onNodeWithTag("open-app-drawer").performClick()
+        logDrawerDiagnosticSnapshot("explicit-after-open-click")
         composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
         composeRule.onNodeWithTag("close-app-drawer").performClick()
         composeRule.onAllNodesWithTag("open-app-drawer").assertCountEquals(1)
@@ -66,7 +95,9 @@ class HomeNavigationTest {
 
     @Test
     fun systemBackClosesTheAppDrawer() {
+        logDrawerDiagnosticSnapshot("back-before-open-click")
         composeRule.onNodeWithTag("open-app-drawer").performClick()
+        logDrawerDiagnosticSnapshot("back-after-open-click")
         composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.onBackPressedDispatcher.onBackPressed()
