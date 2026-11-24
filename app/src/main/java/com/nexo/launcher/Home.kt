@@ -1711,14 +1711,15 @@ private fun HomeMiniPagePreview(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (canDelete) {
-                    Surface(
-                        color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
-                        modifier = Modifier.size(28.dp)
+                    IconButton(
+                        onClick = onDeletePage,
+                        modifier = Modifier.size(32.dp)
                             .testTag("delete-home-page-$index")
                             .semantics { contentDescription = "Borrar página ${index + 1}" }
-                            .clickable(onClick = onDeletePage)
                     ) {
-                        Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
+                        Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50), modifier = Modifier.size(27.dp)) {
+                            Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
+                        }
                     }
                 }
             }
