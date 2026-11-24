@@ -1701,7 +1701,7 @@ private fun HomeMiniPagePreview(
         Surface(
             color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
             border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
-            modifier = Modifier.fillMaxSize().testTag("page-preview-$index").semantics {
+            modifier = Modifier.fillMaxSize().semantics {
                 contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
             }
         ) {
@@ -1747,7 +1747,7 @@ private fun HomeMiniPagePreview(
                 }
                 Spacer(Modifier.height(3.dp))
             }
-            Column(Modifier.weight(1f).fillMaxWidth().clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f).fillMaxWidth().testTag("page-preview-$index").clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 repeat(if (index == 0) 3 else 5) { row ->
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         repeat(4) { column ->
