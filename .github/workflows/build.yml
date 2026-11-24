@@ -45,6 +45,8 @@ jobs:
           script: gradle connectedDebugAndroidTest --no-daemon
         env:
           ANDROID_I_WANT_MY_TCG: yes
+          NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v6
         with:
