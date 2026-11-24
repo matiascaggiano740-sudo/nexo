@@ -18,6 +18,27 @@ internal fun homeIconSizing(cellHeightDp: Float): HomeIconSizing {
     return HomeIconSizing(icon, showLabel)
 }
 
+internal const val HOME_GRID_GAP_DP = 8f
+
+/** Derive widget row occupancy from the live measured launcher grid, never an assumed 100dp cell. */
+internal fun homeGridCellHeightDp(availableHeightDp: Float, firstPage: Boolean, gapDp: Float = HOME_GRID_GAP_DP): Float {
+    val lineGaps = if (firstPage) 4 else 5
+    return ((availableHeightDp.coerceAtLeast(0f) - gapDp.coerceAtLeast(0f) * lineGaps) / HomeGrid.ROW_COUNT)
+        .coerceAtLeast(1f)
+}
+
+internal fun widgetRowsForHeight(heightDp: Int, cellHeightDp: Float, gapDp: Float = HOME_GRID_GAP_DP): Int {
+    val cell = cellHeightDp.coerceAtLeast(1f)
+    val gap = gapDp.coerceAtLeast(0f)
+    val wanted = heightDp.coerceAtLeast(1).toFloat()
+    return kotlin.math.ceil((wanted + gap) / (cell + gap)).toInt().coerceAtLeast(1)
+}
+
+internal fun widgetSpanHeightDp(rows: Int, cellHeightDp: Float, gapDp: Float = HOME_GRID_GAP_DP): Float {
+    val count = rows.coerceAtLeast(1)
+    return cellHeightDp.coerceAtLeast(1f) * count + gapDp.coerceAtLeast(0f) * (count - 1)
+}
+
 internal object HomeGrid {
     const val COLUMN_COUNT = 4
     const val ROW_COUNT = 7
