@@ -1708,21 +1708,7 @@ private fun HomeMiniPagePreview(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
                 .padding(horizontal = 11.dp, vertical = 9.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                if (canDelete) {
-                    IconButton(
-                        onClick = onDeletePage,
-                        modifier = Modifier.size(32.dp)
-                            .testTag("delete-home-page-$index")
-                            .semantics { contentDescription = "Borrar página ${index + 1}" }
-                    ) {
-                        Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50), modifier = Modifier.size(27.dp)) {
-                            Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
-                        }
-                    }
-                }
-            }
+            Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Text("$timeText   ·   $dateText", color = Cream.copy(alpha = 0.7f), fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(5.dp))
             Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(27.dp)) {
@@ -1800,6 +1786,18 @@ private fun HomeMiniPagePreview(
                 }
             }
         }
+        }
+        if (canDelete) {
+            Surface(
+                color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(36.dp).zIndex(2f)
+                    .testTag("delete-home-page-$index")
+                    .semantics { contentDescription = "Borrar página ${index + 1}" }
+                    .clickable(onClick = onDeletePage),
+                shadowElevation = 3.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 19.sp, lineHeight = 19.sp) }
+            }
         }
     }
 }
