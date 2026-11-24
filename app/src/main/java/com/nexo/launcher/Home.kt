@@ -412,7 +412,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val nativeWidgetRows = pageWidgetIds.sumOf { id ->
                 val height = launcherActivity?.widgetHeightDp(id) ?: 132
-                widgetRowsForHeight(height, launcherActivity?.homeCellHeightDp?.floatValue ?: cellHeight.value)
+                widgetRowsForHeight(height, launcherActivity?.homeCellHeightDp?.floatValue ?: 72f)
             }.coerceAtMost(7)
             val quoteRows = if (currentPage == 0) 2 else 0
             val quoteItemCount = if (quoteRows > 0) 1 else 0
@@ -430,7 +430,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 if (apps.isEmpty() || launcherActivity?.homeCellHeightMeasured?.value != true) return@LaunchedEffect
                 val widgetRowsByPage = launcherActivity?.hostedWidgetIds.orEmpty().groupBy { id ->
                     launcherActivity?.hostedWidgetPages?.get(id) ?: 0
-                }.mapValues { (_, ids) -> ids.sumOf { id -> widgetRowsForHeight(launcherActivity?.widgetHeightDp(id) ?: 132, launcherActivity?.homeCellHeightDp?.floatValue ?: cellHeight.value) } }
+                }.mapValues { (_, ids) -> ids.sumOf { id -> widgetRowsForHeight(launcherActivity?.widgetHeightDp(id) ?: 132, launcherActivity?.homeCellHeightDp?.floatValue ?: 72f) } }
                 val migrated = HomeGrid.normalize(
                     pages = homePages,
                     widgetRowsByPage = widgetRowsByPage,
