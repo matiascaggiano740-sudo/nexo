@@ -1591,7 +1591,6 @@ private fun HomeEditOverview(
     onManage: () -> Unit,
     onBackup: () -> Unit
 ) {
-    var pendingDeletePage by remember { mutableStateOf<Int?>(null) }
     Column(
         Modifier.fillMaxSize()
             .background(Color(0xF2171717))
@@ -1654,20 +1653,6 @@ private fun HomeEditOverview(
             HomeEditActionCard("Respaldo", "Guardar o restaurar la distribución del inicio", Modifier.fillMaxWidth(), onBackup, compact = true)
         }
     }
-    pendingDeletePage?.let { pageIndex ->
-        val pageApps = pages.getOrNull(pageIndex)?.count { it.isNotBlank() && it != "-" } ?: 0
-        val pageWidgets = widgetIdsByPage[pageIndex].orEmpty().size
-        AlertDialog(
-            onDismissRequest = { pendingDeletePage = null },
-            title = { Text("¿Borrar página ${pageIndex + 1}?") },
-            text = { Text("Esta página contiene $pageApps aplicación(es) y $pageWidgets widget(s). Se quitarán junto con la página.") },
-            confirmButton = { TextButton(modifier = Modifier.testTag("confirm-delete-home-page"), onClick = {
-                pendingDeletePage = null
-                onDeletePage(pageIndex)
-            }) { Text("Borrar página") } },
-            dismissButton = { TextButton(modifier = Modifier.testTag("cancel-delete-home-page"), onClick = { pendingDeletePage = null }) { Text("Cancelar") } }
-        )
-    }
 }
 
 @Composable
@@ -1689,6 +1674,7 @@ private fun HomeMiniPagePreview(
     modifier: Modifier = Modifier
 ) {
     val outline = if (selected) Color(0xFFFFD37A) else Color.White.copy(alpha = 0.17f)
+    var pendingDelete by remember(index) { mutableStateOf(false) }
     val context = LocalContext.current
     val widgetPreviews = remember(widgetIds) {
         widgetIds.mapNotNull { id ->
@@ -1729,9 +1715,9 @@ private fun HomeMiniPagePreview(
                     IconButton(
                         onClick = {
                             if (packages.any { it.isNotBlank() && it != "-" } || widgetIds.isNotEmpty()) {
-                                pendingDeletePage = index
+                                pendingDelete = true
                             } else {
-                                onDeletePage(index)
+                                onDeletePage()
                             }
                         },
                         modifier = Modifier.size(36.dp).testTag("delete-home-page-$index")
@@ -1820,6 +1806,20 @@ private fun HomeMiniPagePreview(
                 }
             }
         }
+        }
+        if (pendingDelete) {
+            val appCount = packages.count { it.isNotBlank() && it != "-" }
+            val widgetCount = widgetIds.size
+            AlertDialog(
+                onDismissRequest = { pendingDelete = false },
+                title = { Text("¿Borrar página ${index + 1}?") },
+                text = { Text("Esta página contiene $appCount aplicación(es) y $widgetCount widget(s). Se quitarán junto con la página.") },
+                confirmButton = { TextButton(modifier = Modifier.testTag("confirm-delete-home-page"), onClick = {
+                    pendingDelete = false
+                    onDeletePage()
+                }) { Text("Borrar página") } },
+                dismissButton = { TextButton(modifier = Modifier.testTag("cancel-delete-home-page"), onClick = { pendingDelete = false }) { Text("Cancelar") } }
+            )
         }
     }
 }
