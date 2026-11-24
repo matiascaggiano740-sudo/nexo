@@ -156,8 +156,10 @@ monitor_test() {
 methods=(
   appDrawerOpensAndClosesFromExplicitControls
   systemBackClosesTheAppDrawer
+  newPageStaysEmptyAndPagesCanBeSelectedIndependently
+  iconPackSelectionIsReachableFromHomeEdit
+  androidCanResolveNexoAsAHomeActivityWithoutChangingTheDefault
 )
-printf 'selected_test_methods=%s\n' "${methods[*]}" | tee "$DIAG/selected-test-methods.txt"
 printf 'method,gradle_exit_code,junit_result,test_count,failures,errors,skipped,execution_state\n' > "$DIAG/test-summary.csv"
 attempted_tests=0
 printf '%s\n' "$attempted_tests" > "$DIAG/attempted-test-commands.txt"
