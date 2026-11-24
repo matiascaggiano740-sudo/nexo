@@ -63,7 +63,6 @@ internal fun bundledIconAssets(theme: IconTheme): IntArray = when (theme) {
         R.drawable.icon_liquid_play_store,
         R.drawable.icon_liquid_settings,
         R.drawable.icon_liquid_threads,
-        R.drawable.icon_liquid_x,
         R.drawable.icon_liquid_youtube
     )
 }
@@ -124,8 +123,9 @@ fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (them
         "com.google.android.calendar" -> R.drawable.icon_liquid_calendar
         "com.google.android.calculator", "com.android.calculator2", "com.miui.calculator" -> R.drawable.icon_liquid_calculator
         "com.google.android.apps.nbu.files" -> R.drawable.icon_liquid_files
+        "com.android.email", "com.miui.email" -> R.drawable.icon_liquid_mail
+        "com.android.email", "com.miui.email" -> R.drawable.icon_liquid_mail
         "com.google.android.keep" -> R.drawable.icon_liquid_keep
-        "com.twitter.android" -> R.drawable.icon_liquid_x
         "com.google.android.apps.maps" -> R.drawable.icon_liquid_maps
         else -> null
     }
