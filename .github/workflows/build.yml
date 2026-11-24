@@ -36,10 +36,81 @@ jobs:
       - name: Validar sintaxis del script de diagnóstico
         run: bash -n scripts/diagnose-emulator.sh
 
-      - name: Preparar paquetes del Android SDK antes del emulador
+      - name: Preparar solo paquetes faltantes del Android SDK
+        shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null
-          sdkmanager --install 'build-tools;37.0.0' platform-tools 'platforms;android-35'
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<unset>}"
+
+          sdk_roots=()
+          [[ -n "${ANDROID_HOME:-}" ]] && sdk_roots+=("$ANDROID_HOME")
+          if [[ -n "${ANDROID_SDK_ROOT:-}" && "${ANDROID_SDK_ROOT}" != "${ANDROID_HOME:-}" ]]; then
+            sdk_roots+=("$ANDROID_SDK_ROOT")
+          fi
+          if [[ ${#sdk_roots[@]} -eq 0 ]]; then
+            echo "ERROR: ANDROID_HOME y ANDROID_SDK_ROOT están vacías; no se puede localizar el Android SDK." >&2
+            exit 1
+          fi
+
+          inspected_paths=()
+          sdkmanager_path=""
+          sdk_root=""
+          for candidate_root in "${sdk_roots[@]}"; do
+            echo "Inspeccionando raíz SDK: $candidate_root"
+            if [[ ! -d "$candidate_root" ]]; then
+              echo "No existe el directorio SDK: $candidate_root"
+              continue
+            fi
+            for candidate in "$candidate_root"/cmdline-tools/*/bin/sdkmanager; do
+              [[ -e "$candidate" ]] || continue
+              inspected_paths+=("$candidate")
+              if [[ -f "$candidate" && -x "$candidate" ]]; then
+                sdkmanager_path="$candidate"
+                sdk_root="$candidate_root"
+                break 2
+              fi
+            done
+          done
+
+          if [[ -z "$sdkmanager_path" ]]; then
+            echo "ERROR: no se encontró un sdkmanager ejecutable dentro de cmdline-tools." >&2
+            echo "Rutas inspeccionadas:" >&2
+            if [[ ${#inspected_paths[@]} -eq 0 ]]; then
+              for candidate_root in "${sdk_roots[@]}"; do
+                echo "  $candidate_root/cmdline-tools/*/bin/sdkmanager (sin coincidencias)" >&2
+              done
+            else
+              printf '  %s\n' "${inspected_paths[@]}" >&2
+              for inspected in "${inspected_paths[@]}"; do
+                if [[ ! -f "$inspected" ]]; then echo "    no es archivo regular" >&2; fi
+                if [[ ! -x "$inspected" ]]; then echo "    no tiene permiso de ejecución" >&2; fi
+              done
+            fi
+            exit 1
+          fi
+          echo "sdkmanager localizado: $sdkmanager_path"
+          echo "SDK seleccionado: $sdk_root"
+
+          missing_packages=()
+          [[ -x "$sdk_root/platform-tools/adb" ]] || missing_packages+=("platform-tools")
+          [[ -f "$sdk_root/platforms/android-35/android.jar" ]] || missing_packages+=("platforms;android-35")
+          [[ -x "$sdk_root/emulator/emulator" ]] || missing_packages+=("emulator")
+          [[ -f "$sdk_root/system-images/android-35/google_apis/x86_64/system.img" ]] || missing_packages+=("system-images;android-35;google_apis;x86_64")
+
+          if [[ ${#missing_packages[@]} -eq 0 ]]; then
+            echo "Paquetes requeridos del emulador Android 35 ya instalados; no se instala nada."
+          else
+            printf 'Se instalarán únicamente estos paquetes faltantes: %s\n' "${missing_packages[*]}"
+            set +o pipefail
+            yes | "$sdkmanager_path" --licenses > /dev/null
+            license_status=${PIPESTATUS[1]}
+            set -o pipefail
+            if [[ $license_status -ne 0 ]]; then
+              echo "ERROR: sdkmanager --licenses terminó con código $license_status." >&2
+              exit "$license_status"
+            fi
+            "$sdkmanager_path" --install "${missing_packages[@]}"
+          fi
 
       - name: Ejecutar pruebas instrumentadas en emulador Android 35
         uses: reactivecircus/android-emulator-runner@v2
