@@ -10,6 +10,8 @@ class IconThemesTest {
         assertEquals(R.drawable.icon_crayon_whatsapp, themedIconResource(IconTheme.CRAYON, "com.whatsapp"))
         assertEquals(R.drawable.icon_crayon_spotify, themedIconResource(IconTheme.CRAYON, "com.spotify.music"))
         assertEquals(R.drawable.icon_crayon_settings, themedIconResource(IconTheme.CRAYON, "com.android.settings"))
+        assertEquals(R.drawable.icon_crayon_weather, themedIconResource(IconTheme.CRAYON, "com.miui.weather2"))
+        assertEquals(R.drawable.icon_crayon_message_bubble, themedIconResource(IconTheme.CRAYON, "com.google.android.apps.messaging"))
         assertNull(themedIconResource(IconTheme.CRAYON, "com.android.chrome"))
     }
 
