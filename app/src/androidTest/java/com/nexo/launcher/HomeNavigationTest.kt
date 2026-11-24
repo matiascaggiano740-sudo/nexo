@@ -2,6 +2,7 @@ package com.nexo.launcher
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToLog
 import android.util.Log
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
@@ -37,7 +38,7 @@ class HomeNavigationTest {
         listOf("open-app-drawer", "close-app-drawer").forEach { nodeTag ->
             runCatching {
                 val nodes = composeRule.onAllNodesWithTag(nodeTag, useUnmergedTree = true)
-                    .fetchSemanticsNodes(atLeastOneRootExpected = false)
+                    .fetchSemanticsNodes(atLeastOneRootRequired = false)
                 Log.i(tag, "TAG_NODES label=$label tag=$nodeTag count=${nodes.size}")
                 nodes.forEachIndexed { index, node ->
                     Log.i(tag, "TAG_NODE label=$label tag=$nodeTag index=$index boundsInRoot=${node.boundsInRoot} boundsInWindow=${node.boundsInWindow} config=${node.config}")
