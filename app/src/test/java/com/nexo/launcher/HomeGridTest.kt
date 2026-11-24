@@ -135,4 +135,25 @@ class HomeGridTest {
             assertTrue(result.all { it.size == HomeGrid.CELL_COUNT })
         }
     }
+
+    @Test
+    fun widgetRowsFollowMeasuredCellHeightInsteadOfFixedDpAssumptions() {
+        assertEquals(1, widgetRowsForHeight(64, 64f))
+        assertEquals(2, widgetRowsForHeight(65, 64f))
+        assertEquals(2, widgetRowsForHeight(100, 64f))
+        assertEquals(1, widgetRowsForHeight(80, 88f))
+        assertEquals(3, widgetRowsForHeight(200, 72f))
+        assertEquals(136f, widgetSpanHeightDp(2, 64f), 0.01f)
+        assertEquals(216f, widgetSpanHeightDp(3, 100f, 8f), 0.01f)
+    }
+
+    @Test
+    fun measuredGridRowsAndCollapsedFullSpanGapsFitTheViewport() {
+        val pageWithQuote = homeGridCellHeightDp(500f, firstPage = true, gapDp = 8f)
+        val pageWithoutQuote = homeGridCellHeightDp(500f, firstPage = false, gapDp = 8f)
+        assertEquals(68f, pageWithQuote, 0.01f)
+        assertEquals(66.85714f, pageWithoutQuote, 0.01f)
+        assertEquals(500f, pageWithQuote * 7 + 8f * 4, 0.01f)
+        assertEquals(500f, pageWithoutQuote * 7 + 8f * 5, 0.01f)
+    }
 }
