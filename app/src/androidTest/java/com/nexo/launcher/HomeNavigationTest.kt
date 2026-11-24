@@ -127,7 +127,13 @@ class HomeNavigationTest {
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("page-preview-1-widget-0").fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithTag("delete-home-page-1").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("delete-home-page-1").assertCountEquals(1)
         composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()

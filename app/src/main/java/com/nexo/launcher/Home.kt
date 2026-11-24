@@ -1695,13 +1695,13 @@ private fun HomeMiniPagePreview(
             label to preview
         }
     }
-    Box(modifier.clickable(onClick = onClick)) {
+    Box(modifier) {
         Surface(
             color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
             border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
             modifier = Modifier.fillMaxSize().semantics {
                 contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
-            }
+            }.clickable(onClick = onClick)
         ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
@@ -1789,8 +1789,10 @@ private fun HomeMiniPagePreview(
         if (canDelete) {
             Surface(
                 color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp)
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(36.dp)
+                    .zIndex(2f)
                     .testTag("delete-home-page-$index")
+                    .semantics { contentDescription = "Borrar página ${index + 1}" }
                     .clickable(onClick = onDeletePage),
                 shadowElevation = 3.dp
             ) {
