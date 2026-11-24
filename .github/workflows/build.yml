@@ -7,10 +7,49 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  bash32-compat:
+    name: Validate diagnostic script with macOS Bash 3.2
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v6
+
+      - name: Verify Bash 3.2 and syntax compatibility
+        shell: bash
+        run: |
+          system_bash_version="$(/bin/bash -c 'printf "%s" "$BASH_VERSION"')"
+          echo "macOS /bin/bash version: $system_bash_version"
+          /bin/bash --version | head -n 1
+          case "$system_bash_version" in
+            3.2.*) ;;
+            *) echo "ERROR: expected macOS Bash 3.2, got $system_bash_version" >&2; exit 1 ;;
+          esac
+          /bin/bash -n scripts/diagnose-emulator.sh
+          if grep -En '(^|[;[:space:]])(local|declare)[[:space:]]+-[^[:space:]]*A|(^|[;[:space:]])(mapfile|readarray)([[:space:]]|$)' scripts/diagnose-emulator.sh; then
+            echo "ERROR: Bash 4+ associative arrays or array-reading commands found." >&2
+            exit 1
+          fi
+          echo "Bash 3.2 syntax and incompatible-construct checks passed."
+
+  build:
+    name: Build and instrumented emulator tests
+    needs: bash32-compat
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Enable KVM group permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+          test -e /dev/kvm
+
+      - name: Report actual Bash used by the test job
+        run: |
+          command -v bash
+          bash --version
+          /bin/bash --version
 
       - uses: actions/setup-java@v6
         with:
@@ -34,7 +73,7 @@ jobs:
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
 
       - name: Validar sintaxis del script de diagnóstico
-        run: bash -n scripts/diagnose-emulator.sh
+        run: /bin/bash -n scripts/diagnose-emulator.sh
 
       - name: Preparar solo paquetes faltantes del Android SDK
         shell: bash
@@ -123,7 +162,7 @@ jobs:
           ram-size: 3072M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: bash scripts/diagnose-emulator.sh
+          script: /bin/bash scripts/diagnose-emulator.sh
         env:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
@@ -138,4 +177,3 @@ jobs:
             app/build/outputs/androidTest-results/connected/debug/
             app/build/diagnostics/
           if-no-files-found: warn
-
