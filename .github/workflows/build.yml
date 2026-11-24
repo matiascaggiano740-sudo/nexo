@@ -36,6 +36,11 @@ jobs:
       - name: Validar sintaxis del script de diagnóstico
         run: bash -n scripts/diagnose-emulator.sh
 
+      - name: Preparar paquetes del Android SDK antes del emulador
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager --install 'build-tools;37.0.0' platform-tools 'platforms;android-35'
+
       - name: Ejecutar pruebas instrumentadas en emulador Android 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
