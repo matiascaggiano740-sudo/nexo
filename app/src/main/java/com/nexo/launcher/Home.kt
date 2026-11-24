@@ -1702,13 +1702,26 @@ private fun HomeMiniPagePreview(
             border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
             modifier = Modifier.fillMaxSize().testTag("page-preview-$index").semantics {
                 contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
-            }.clickable(onClick = onClick)
+            }
         ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
                 .padding(horizontal = 11.dp, vertical = 9.dp)
         ) {
-            Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                if (canDelete) {
+                    IconButton(
+                        onClick = onDeletePage,
+                        modifier = Modifier.size(36.dp).testTag("delete-home-page-$index")
+                            .semantics { contentDescription = "Borrar página ${index + 1}" }
+                    ) {
+                        Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50), modifier = Modifier.size(28.dp)) {
+                            Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
+                        }
+                    }
+                }
+            }
             Text("$timeText   ·   $dateText", color = Cream.copy(alpha = 0.7f), fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(5.dp))
             Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(27.dp)) {
@@ -1733,7 +1746,7 @@ private fun HomeMiniPagePreview(
                 }
                 Spacer(Modifier.height(3.dp))
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f).fillMaxWidth().clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 repeat(if (index == 0) 3 else 5) { row ->
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         repeat(4) { column ->
@@ -1786,18 +1799,6 @@ private fun HomeMiniPagePreview(
                 }
             }
         }
-        }
-        if (canDelete) {
-            Surface(
-                color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(36.dp).zIndex(2f)
-                    .testTag("delete-home-page-$index")
-                    .semantics { contentDescription = "Borrar página ${index + 1}" }
-                    .pointerInput(index) { detectTapGestures(onTap = { onDeletePage() }) },
-                shadowElevation = 3.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 19.sp, lineHeight = 19.sp) }
-            }
         }
     }
 }
