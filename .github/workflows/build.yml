@@ -42,13 +42,24 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim
-          script: gradle connectedDebugAndroidTest --no-daemon
+          script: |
+            gradle connectedDebugAndroidTest --no-daemon
+            test_status=$?
+            mkdir -p app/build/diagnostics
+            adb logcat -d -v threadtime > app/build/diagnostics/emulator-logcat.txt || true
+            exit $test_status
         env:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v6
+        if: always()
         with:
-          name: NEXO-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: NEXO-build-and-test-diagnostics
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/reports/androidTests/connected/debug/
+            app/build/outputs/androidTest-results/connected/debug/
+            app/build/diagnostics/emulator-logcat.txt
+          if-no-files-found: warn
 
