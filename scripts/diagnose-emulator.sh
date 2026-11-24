@@ -154,7 +154,7 @@ monitor_test() {
 }
 
 methods=(
-  longPressingHomeAppStartsDragWithoutEnteringPageEdit
+  longPressingHomeAppDoesNotEnterPageEdit
   appDrawerOpensAndClosesFromExplicitControls
   systemBackClosesTheAppDrawer
   newPageStaysEmptyAndPagesCanBeSelectedIndependently
