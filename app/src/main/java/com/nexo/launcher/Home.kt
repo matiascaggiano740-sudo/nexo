@@ -913,7 +913,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 weatherText = if (w != null) "${w.temp}° · ${w.label} · ${w.city}" else city.ifBlank { "Tocá para elegir ciudad" },
                 defaultPackages = defaultHomeApps.map { it.pkg },
                 widgetIdsByPage = launcherActivity?.hostedWidgetIds?.groupBy { id -> launcherActivity.hostedWidgetPages[id] ?: 0 }.orEmpty(),
-                onDeletePage = { requestDeleteHomePage(it) },
+                onDeletePage = { deleteHomePage(it) },
                 onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
@@ -1591,6 +1591,7 @@ private fun HomeEditOverview(
     onManage: () -> Unit,
     onBackup: () -> Unit
 ) {
+    var pendingDeletePage by remember { mutableStateOf<Int?>(null) }
     Column(
         Modifier.fillMaxSize()
             .background(Color(0xF2171717))
@@ -1653,6 +1654,20 @@ private fun HomeEditOverview(
             HomeEditActionCard("Respaldo", "Guardar o restaurar la distribución del inicio", Modifier.fillMaxWidth(), onBackup, compact = true)
         }
     }
+    pendingDeletePage?.let { pageIndex ->
+        val pageApps = pages.getOrNull(pageIndex)?.count { it.isNotBlank() && it != "-" } ?: 0
+        val pageWidgets = widgetIdsByPage[pageIndex].orEmpty().size
+        AlertDialog(
+            onDismissRequest = { pendingDeletePage = null },
+            title = { Text("¿Borrar página ${pageIndex + 1}?") },
+            text = { Text("Esta página contiene $pageApps aplicación(es) y $pageWidgets widget(s). Se quitarán junto con la página.") },
+            confirmButton = { TextButton(modifier = Modifier.testTag("confirm-delete-home-page"), onClick = {
+                pendingDeletePage = null
+                onDeletePage(pageIndex)
+            }) { Text("Borrar página") } },
+            dismissButton = { TextButton(modifier = Modifier.testTag("cancel-delete-home-page"), onClick = { pendingDeletePage = null }) { Text("Cancelar") } }
+        )
+    }
 }
 
 @Composable
@@ -1712,7 +1727,13 @@ private fun HomeMiniPagePreview(
                 Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (canDelete) {
                     IconButton(
-                        onClick = onDeletePage,
+                        onClick = {
+                            if (packages.any { it.isNotBlank() && it != "-" } || widgetIds.isNotEmpty()) {
+                                pendingDeletePage = index
+                            } else {
+                                onDeletePage(index)
+                            }
+                        },
                         modifier = Modifier.size(36.dp).testTag("delete-home-page-$index")
                             .semantics { contentDescription = "Borrar página ${index + 1}" }
                     ) {

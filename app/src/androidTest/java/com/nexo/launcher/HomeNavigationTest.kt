@@ -70,11 +70,6 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("add-home-page").performClick()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
         composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
-        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
-        composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
-        composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
     }
