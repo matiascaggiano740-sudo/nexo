@@ -1793,7 +1793,7 @@ private fun HomeMiniPagePreview(
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(36.dp).zIndex(2f)
                     .testTag("delete-home-page-$index")
                     .semantics { contentDescription = "Borrar página ${index + 1}" }
-                    .clickable(onClick = onDeletePage),
+                    .pointerInput(index) { detectTapGestures(onTap = { onDeletePage() }) },
                 shadowElevation = 3.dp
             ) {
                 Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 19.sp, lineHeight = 19.sp) }

@@ -68,11 +68,11 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("add-home-page").performClick()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onNodeWithTag("delete-home-page-1").performTouchInput { click() }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onNodeWithTag("delete-home-page-1").performTouchInput { click() }
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
@@ -98,12 +98,12 @@ class HomeNavigationTest {
         }
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-0").performClick()
+        composeRule.onNodeWithTag("delete-home-page-0").performTouchInput { click() }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
         composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-0").performClick()
+        composeRule.onNodeWithTag("delete-home-page-0").performTouchInput { click() }
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
@@ -137,7 +137,7 @@ class HomeNavigationTest {
                 composeRule.onAllNodesWithTag("delete-home-page-1").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onAllNodesWithTag("delete-home-page-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onNodeWithTag("delete-home-page-1").performTouchInput { click() }
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
