@@ -32,7 +32,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import android.widget.Toast
-import android.util.Log
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -64,8 +63,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -130,11 +127,6 @@ private fun writeUserFolders(ctx: android.content.Context, folders: List<Pair<St
         array.put(JSONObject().put("name", name).put("packages", JSONArray(packages)))
     }
     ctx.getSharedPreferences("nexo_home", 0).edit().putString("user_folders", array.toString()).apply()
-}
-
-private fun Modifier.layoutDiagnostic(name: String) = onGloballyPositioned { coordinates ->
-    val parent = coordinates.parentLayoutCoordinates
-    Log.i("NEXO_LAYOUT_DIAG", "COORD name=$name size=${coordinates.size} posRoot=${coordinates.positionInRoot()} parentSize=${parent?.size} parentPosRoot=${parent?.positionInRoot()}")
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -416,7 +408,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp).layoutDiagnostic("home-column")) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val nativeWidgetRows = pageWidgetIds.sumOf { id ->
                 val height = launcherActivity?.widgetHeightDp(id) ?: 132
@@ -452,8 +444,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         .putString("pages", migrated.joinToString("~") { it.joinToString("|") }).apply()
                 }
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().layoutDiagnostic("weighted-box-constraints")) {
-                Log.i("NEXO_LAYOUT_DIAG", "BOX_SCOPE maxWidth=$maxWidth maxHeight=$maxHeight constraints=$constraints")
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val gridGap = 8.dp
                 val cellHeight = homeGridCellHeightDp(maxHeight.value, quoteRows > 0, gridGap.value).dp
                 SideEffect {
@@ -468,7 +459,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 val headerHeight = cellHeight * 2
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
-                    modifier = Modifier.fillMaxSize().layoutDiagnostic("home-grid"),
+                    modifier = Modifier.fillMaxSize(),
                     userScrollEnabled = false,
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalArrangement = Arrangement.spacedBy(gridGap)
@@ -669,6 +660,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     }
                 }
             }
+            }
 
             if (editingHome) {
                 Surface(
@@ -772,7 +764,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth().layoutDiagnostic("search-row"), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = Glass,
                     shape = RoundedCornerShape(23.dp),
@@ -792,13 +784,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             Surface(
                 color = Glass,
                 shape = RoundedCornerShape(32.dp),
-                modifier = Modifier.fillMaxWidth().height(76.dp).layoutDiagnostic("dock-surface")
+                modifier = Modifier.fillMaxWidth().height(76.dp)
             ) {
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically) {
                     repeat(4) { dockIndex ->
                         val dockApp = dockPackages.getOrNull(dockIndex)?.let { pkg -> apps.find { it.pkg == pkg } }
-                        DockCell(modifier = Modifier.weight(1f).fillMaxHeight().layoutDiagnostic("dock-cell-$dockIndex"), app = dockApp, index = dockIndex, editing = editingHome,
+                        DockCell(modifier = Modifier.weight(1f).fillMaxHeight(), app = dockApp, index = dockIndex, editing = editingHome,
                             onLongPress = { editingHome = true },
                             onRemove = {
                                 val updated = dockPackages.toMutableList().apply { while (size < 4) add("-"); this[dockIndex] = "-" }
@@ -838,7 +830,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             })
                     }
                 }
-            }
             }
 
                         Spacer(Modifier.height(10.dp))
