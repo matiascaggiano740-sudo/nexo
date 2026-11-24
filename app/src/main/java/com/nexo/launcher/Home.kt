@@ -65,9 +65,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -2211,27 +2208,26 @@ LaunchedEffect(apps) {
         Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)
             .testTag("app-drawer-surface")
             .pointerInput(drawerListState) {
-                awaitEachGesture {
-                    awaitPointerEventScope {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        var closeGestureHandled = false
-                        do {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            val dy = change.position.y - down.position.y
-                            val topReached = drawerListState.firstVisibleItemIndex == 0 && drawerListState.firstVisibleItemScrollOffset == 0
-                            val layout = drawerListState.layoutInfo
-                            val bottomReached = layout.totalItemsCount > 0 && layout.visibleItemsInfo.lastOrNull()?.index == layout.totalItemsCount - 1
-                            if (!closeGestureHandled && dy > viewConfiguration.touchSlop * 2f && topReached) {
-                                closeGestureHandled = true
-                                close()
-                            } else if (!closeGestureHandled && dy < -viewConfiguration.touchSlop * 2f && bottomReached) {
-                                closeGestureHandled = true
-                                close()
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
+                var verticalDistance = 0f
+                var startedAtTop = false
+                var startedAtBottom = false
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        verticalDistance = 0f
+                        startedAtTop = drawerListState.firstVisibleItemIndex == 0 && drawerListState.firstVisibleItemScrollOffset == 0
+                        val layout = drawerListState.layoutInfo
+                        startedAtBottom = layout.totalItemsCount > 0 && layout.visibleItemsInfo.lastOrNull()?.index == layout.totalItemsCount - 1
+                    },
+                    onVerticalDrag = { change, amount ->
+                        verticalDistance += amount
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (verticalDistance > viewConfiguration.touchSlop * 2f && startedAtTop) close()
+                        else if (verticalDistance < -viewConfiguration.touchSlop * 2f && startedAtBottom) close()
+                    },
+                    onDragCancel = { verticalDistance = 0f }
+                )
             }
     ) {
     var menuExpanded by remember { mutableStateOf(false) }
