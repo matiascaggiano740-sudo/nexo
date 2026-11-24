@@ -200,7 +200,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             return
         }
         val occupiedWidgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
-            ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
+            ?.sumOf { id -> widgetRowsForHeight(launcherActivity.widgetHeightDp(id), launcherActivity.homeCellHeightDp.floatValue) * 4 } ?: 0
         val firstAppCell = (8 + occupiedWidgetCells).coerceIn(0, 28)
         while (page.size < 28) page.add("-")
         val appEndCell = (28 - if (currentPage == 0) 8 else 0).coerceAtLeast(firstAppCell)
@@ -412,7 +412,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
             val nativeWidgetRows = pageWidgetIds.sumOf { id ->
                 val height = launcherActivity?.widgetHeightDp(id) ?: 132
-                ((height + 99) / 100).coerceAtLeast(1)
+                widgetRowsForHeight(height, launcherActivity?.homeCellHeightDp?.floatValue ?: cellHeight.value)
             }.coerceAtMost(7)
             val quoteRows = if (currentPage == 0) 2 else 0
             val quoteItemCount = if (quoteRows > 0) 1 else 0
@@ -426,11 +426,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val widgetLayoutKey = launcherActivity?.hostedWidgetIds?.joinToString(",") { id ->
                 "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}"
             }.orEmpty()
-            LaunchedEffect(homePages, widgetLayoutKey, apps, dockPackages) {
-                if (apps.isEmpty()) return@LaunchedEffect
+            LaunchedEffect(homePages, widgetLayoutKey, apps, dockPackages, launcherActivity?.homeCellHeightDp?.floatValue, launcherActivity?.homeCellHeightMeasured?.value) {
+                if (apps.isEmpty() || launcherActivity?.homeCellHeightMeasured?.value != true) return@LaunchedEffect
                 val widgetRowsByPage = launcherActivity?.hostedWidgetIds.orEmpty().groupBy { id ->
                     launcherActivity?.hostedWidgetPages?.get(id) ?: 0
-                }.mapValues { (_, ids) -> ids.sumOf { id -> ((launcherActivity?.widgetHeightDp(id) ?: 132) + 99) / 100 } }
+                }.mapValues { (_, ids) -> ids.sumOf { id -> widgetRowsForHeight(launcherActivity?.widgetHeightDp(id) ?: 132, launcherActivity?.homeCellHeightDp?.floatValue ?: cellHeight.value) } }
                 val migrated = HomeGrid.normalize(
                     pages = homePages,
                     widgetRowsByPage = widgetRowsByPage,
@@ -446,7 +446,15 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val gridGap = 8.dp
-                val cellHeight = ((maxHeight - gridGap * 6) / 7).coerceAtLeast(1.dp)
+                val cellHeight = homeGridCellHeightDp(maxHeight.value, quoteRows > 0, gridGap.value).dp
+                SideEffect {
+                    launcherActivity?.let { activity ->
+                        if (kotlin.math.abs(activity.homeCellHeightDp.floatValue - cellHeight.value) > 0.25f) {
+                            activity.homeCellHeightDp.floatValue = cellHeight.value
+                        }
+                        if (!activity.homeCellHeightMeasured.value) activity.homeCellHeightMeasured.value = true
+                    }
+                }
                 val quoteHeight = cellHeight * quoteRows
                 val headerHeight = cellHeight * 2
                 LazyVerticalGrid(
@@ -482,8 +490,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         val widgetId = pageWidgetIds[itemIndex - 1]
                         val widgetHostView = remember(widgetId) { launcherActivity?.createWidgetHostView(widgetId) }
                         var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
-                        val widgetRowsHeight = (((launcherActivity?.widgetHeightDp(widgetId) ?: 132) + 99) / 100).coerceAtLeast(1)
-                        Box(Modifier.fillMaxWidth().height(cellHeight * widgetRowsHeight + gridGap * (widgetRowsHeight - 1))) {
+                        val widgetRowsHeight = widgetRowsForHeight(launcherActivity?.widgetHeightDp(widgetId) ?: 132, cellHeight.value)
+                        Box(Modifier.fillMaxWidth().height(widgetSpanHeightDp(widgetRowsHeight, cellHeight.value, gridGap.value).dp)) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
                                 if (widgetHostView != null) {
                                     AndroidView(factory = { widgetHostView }, modifier = Modifier.fillMaxSize())
@@ -716,7 +724,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     val sourcePage = pages.indexOfFirst { token in it }
                                     val dest = pages[page]
                                     val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
-                                        ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
+                                        ?.sumOf { id -> widgetRowsForHeight(launcherActivity.widgetHeightDp(id), launcherActivity.homeCellHeightDp.floatValue) * 4 } ?: 0
                                     val appStart = (8 + widgetCells).coerceAtMost(28)
                                     val appEnd = (28 - if (page == 0) 8 else 0).coerceAtLeast(appStart)
                                     if (token in dest) {
@@ -1064,7 +1072,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }
         val targetPage = pages[currentPage]
         val pageWidgetArea = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }
-            ?.sumOf { id -> ((launcherActivity.widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) * 4 } ?: 0
+            ?.sumOf { id -> widgetRowsForHeight(launcherActivity.widgetHeightDp(id), launcherActivity.homeCellHeightDp.floatValue) * 4 } ?: 0
         val quoteCellArea = if (currentPage == 0) 8 else 0
         val pageOffset = (8 + pageWidgetArea).coerceAtMost(28)
         val pageCellLimit = (28 - pageOffset - quoteCellArea).coerceAtLeast(0)
