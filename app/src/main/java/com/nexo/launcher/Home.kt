@@ -3,6 +3,7 @@ package com.nexo.launcher
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.appwidget.AppWidgetProviderInfo
+import android.appwidget.AppWidgetManager
 import android.content.pm.ShortcutInfo
 import android.os.Process
 import android.graphics.Rect
@@ -27,6 +28,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -61,7 +63,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitEachGesture
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -162,6 +168,7 @@ fun Home() {
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
+    var pagePendingDelete by remember { mutableStateOf<Int?>(null) }
     var showHomeMoreActions by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
@@ -217,6 +224,40 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             .putString("pages", saved.joinToString("~") { it.joinToString("|") })
             .putString("packages", saved.firstOrNull().orEmpty().joinToString("|")).apply()
         drawer = false
+    }
+
+    fun deleteHomePage(index: Int) {
+        if (index !in homePages.indices || homePages.size <= 1) return
+        val pageWidgetIds = launcherActivity?.hostedWidgetIds
+            ?.filter { launcherActivity.hostedWidgetPages[it] == index }
+            ?.toList().orEmpty()
+        pageWidgetIds.forEach { launcherActivity?.removeWidget(it) }
+        launcherActivity?.deleteWidgetPage(index)
+        val updatedPages = homePages.toMutableList().apply { removeAt(index) }
+            .ifEmpty { mutableListOf(emptyList()) }
+            .mapIndexed { pageIndex, page ->
+                if (index == 0 && pageIndex == 0 && page.isEmpty()) List(28) { "-" } else page.toList()
+            }
+        val previousCurrent = currentPage
+        currentPage = when {
+            previousCurrent > index -> previousCurrent - 1
+            previousCurrent == index -> index.coerceAtMost(updatedPages.lastIndex)
+            else -> previousCurrent.coerceAtMost(updatedPages.lastIndex)
+        }
+        homePages = updatedPages
+        homePackages = updatedPages.getOrNull(currentPage).orEmpty()
+        ctx.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") })
+            .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
+            .apply()
+    }
+
+    fun requestDeleteHomePage(index: Int) {
+        if (index !in homePages.indices || homePages.size <= 1) return
+        val hasApps = homePages[index].any { it.isNotBlank() && it != "-" } ||
+            (index == 0 && homePages[index].isEmpty() && defaultHomeApps.isNotEmpty())
+        val hasWidgets = launcherActivity?.hostedWidgetPages?.values?.any { it == index } == true
+        if (hasApps || hasWidgets) pagePendingDelete = index else deleteHomePage(index)
     }
 
     fun showShortcutsFor(app: AppItem) {
@@ -404,6 +445,22 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 animation.animateTo(0f, tween(180)) { pageSwipeX = value }
                             }
                         }
+                    )
+                }
+            }
+            .pointerInput(drawer, editingHome) {
+                if (!drawer && !editingHome) {
+                    var verticalDistance = 0f
+                    detectVerticalDragGestures(
+                        onVerticalDrag = { change, amount ->
+                            verticalDistance += amount
+                            change.consume()
+                        },
+                        onDragEnd = {
+                            if (verticalDistance < -viewConfiguration.touchSlop * 2f) drawer = true
+                            verticalDistance = 0f
+                        },
+                        onDragCancel = { verticalDistance = 0f }
                     )
                 }
             }
@@ -861,6 +918,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 dateText = date,
                 weatherText = if (w != null) "${w.temp}° · ${w.label} · ${w.city}" else city.ifBlank { "Tocá para elegir ciudad" },
                 defaultPackages = defaultHomeApps.map { it.pkg },
+                widgetIdsByPage = launcherActivity?.hostedWidgetIds?.groupBy { id -> launcherActivity.hostedWidgetPages[id] ?: 0 }.orEmpty(),
+                onDeletePage = { requestDeleteHomePage(it) },
                 onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
@@ -1134,6 +1193,22 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", changedPages.joinToString("~") { it.joinToString("|") }).putString("packages", changedPages.firstOrNull().orEmpty().joinToString("|")).apply()
         folderEditor = null
     }) }
+    pagePendingDelete?.let { index ->
+        val appCount = homePages.getOrNull(index)?.let { page ->
+            if (index == 0 && page.isEmpty()) defaultHomeApps.size else page.count { it.isNotBlank() && it != "-" }
+        } ?: 0
+        val widgetCount = launcherActivity?.hostedWidgetPages?.values?.count { it == index } ?: 0
+        AlertDialog(
+            onDismissRequest = { pagePendingDelete = null },
+            title = { Text("¿Borrar página ${index + 1}?") },
+            text = { Text("Esta página contiene $appCount aplicación(es) y $widgetCount widget(s). Se quitarán junto con la página.") },
+            confirmButton = { TextButton(modifier = Modifier.testTag("confirm-delete-home-page"), onClick = {
+                pagePendingDelete = null
+                deleteHomePage(index)
+            }) { Text("Borrar página") } },
+            dismissButton = { TextButton(modifier = Modifier.testTag("cancel-delete-home-page"), onClick = { pagePendingDelete = null }) { Text("Cancelar") } }
+        )
+    }
     if (showPageManager) PageManagerDialog(homePages, currentPage, launcherActivity?.hostedWidgetPages?.values?.toSet().orEmpty(),
         onDismiss = { showPageManager = false },
         onSelect = { currentPage = it; homePackages = homePages.getOrNull(it).orEmpty(); showPageManager = false },
@@ -1152,20 +1227,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", mutable.joinToString("~") { it.joinToString("|") }).putString("packages", mutable.firstOrNull().orEmpty().joinToString("|")).apply()
             }
         },
-        onDelete = { index ->
-            if (index in homePages.indices && homePages[index].all { it == "-" } && (launcherActivity?.hostedWidgetPages?.values?.none { it == index } ?: true)) {
-                val previousCurrent = currentPage
-                val mutable = homePages.toMutableList().also { it.removeAt(index) }.ifEmpty { mutableListOf(emptyList()) }
-                currentPage = when {
-                    previousCurrent > index -> previousCurrent - 1
-                    previousCurrent == index -> index.coerceAtMost(mutable.lastIndex)
-                    else -> previousCurrent
-                }
-                homePages = mutable; homePackages = mutable[currentPage]
-                launcherActivity?.deleteWidgetPage(index)
-                ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", mutable.joinToString("~") { it.joinToString("|") }).putString("packages", mutable.firstOrNull().orEmpty().joinToString("|")).apply()
-            }
-        })
+        onDelete = { index -> showPageManager = false; requestDeleteHomePage(index) })
 }
 @Composable
 private fun UserFolderDialog(
@@ -1208,10 +1270,10 @@ private fun PageManagerDialog(
                     }
                     TextButton(enabled = index > 0, onClick = { onMove(index, index - 1) }) { Text("↑") }
                     TextButton(enabled = index < pages.lastIndex, onClick = { onMove(index, index + 1) }) { Text("↓") }
-                    TextButton(enabled = index > 0 && page.all { it == "-" } && index !in widgetPages, onClick = { onDelete(index) }) { Text("×") }
+                    TextButton(enabled = pages.size > 1, onClick = { onDelete(index) }, modifier = Modifier.testTag("page-manager-delete-$index")) { Text("×") }
                 }
             }
-            Text("Solo se pueden borrar páginas vacías.", style = MaterialTheme.typography.bodySmall)
+            Text("Al borrar una página también se quitan sus apps y widgets.", style = MaterialTheme.typography.bodySmall)
         } },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Listo") } })
 }
@@ -1519,6 +1581,8 @@ private fun HomeEditOverview(
     dateText: String,
     weatherText: String,
     defaultPackages: List<String>,
+    widgetIdsByPage: Map<Int, List<Int>>,
+    onDeletePage: (Int) -> Unit,
     onSelectPage: (Int) -> Unit,
     onClose: () -> Unit,
     onWidget: () -> Unit,
@@ -1563,6 +1627,9 @@ private fun HomeEditOverview(
                     timeText = timeText,
                     dateText = dateText,
                     weatherText = weatherText,
+                    widgetIds = widgetIdsByPage[index].orEmpty(),
+                    canDelete = pages.size > 1,
+                    onDeletePage = { onDeletePage(index) },
                     onClick = { onSelectPage(index) },
                     modifier = Modifier.fillMaxHeight(0.94f).width(238.dp).testTag("page-preview-$index")
                 )
@@ -1602,17 +1669,43 @@ private fun HomeMiniPagePreview(
     timeText: String,
     dateText: String,
     weatherText: String,
+    widgetIds: List<Int>,
+    canDelete: Boolean,
+    onDeletePage: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val outline = if (selected) Color(0xFFFFD37A) else Color.White.copy(alpha = 0.17f)
-    Surface(
-        color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
-        border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
-        modifier = modifier.semantics {
-            contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it != "-" }} apps"
-        }.clickable(onClick = onClick)
-    ) {
+    val context = LocalContext.current
+    val widgetPreviews = remember(widgetIds) {
+        widgetIds.mapNotNull { id ->
+            val info = AppWidgetManager.getInstance(context).getAppWidgetInfo(id) ?: return@mapNotNull null
+            val label = runCatching { info.loadLabel(context.packageManager).toString() }
+                .getOrDefault(info.provider.className.substringAfterLast('.'))
+            val preview = if (android.os.Build.VERSION.SDK_INT >= 28) runCatching {
+                info.loadPreviewImage(context, context.resources.displayMetrics.densityDpi)
+                    ?.let { drawable ->
+                        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 480
+                        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 180
+                        val bitmap = android.graphics.Bitmap.createBitmap(width.coerceAtMost(720), height.coerceAtMost(360), android.graphics.Bitmap.Config.ARGB_8888)
+                        android.graphics.Canvas(bitmap).also { canvas ->
+                            drawable.setBounds(0, 0, canvas.width, canvas.height)
+                            drawable.draw(canvas)
+                        }
+                        bitmap.asImageBitmap()
+                    }
+            }.getOrNull() else null
+            label to preview
+        }
+    }
+    Box(modifier.clickable(onClick = onClick)) {
+        Surface(
+            color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
+            border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
+            modifier = Modifier.fillMaxSize().semantics {
+                contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
+            }
+        ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
                 .padding(horizontal = 11.dp, vertical = 9.dp)
@@ -1626,6 +1719,22 @@ private fun HomeMiniPagePreview(
                 }
             }
             Spacer(Modifier.height(7.dp))
+            widgetPreviews.forEachIndexed { widgetIndex, (label, preview) ->
+                Surface(
+                    color = Color.White.copy(alpha = 0.10f), shape = RoundedCornerShape(9.dp),
+                    modifier = Modifier.fillMaxWidth().height(34.dp).testTag("page-preview-$index-widget-$widgetIndex")
+                ) {
+                    if (preview != null) {
+                        Image(preview, contentDescription = label, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    } else {
+                        Row(Modifier.fillMaxSize().padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("▦", color = Cream, fontSize = 11.sp)
+                            Text(label, color = Cream, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 5.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(3.dp))
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 repeat(if (index == 0) 3 else 5) { row ->
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1677,6 +1786,18 @@ private fun HomeMiniPagePreview(
                     if (app != null) Image(app.icon, app.label, Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
                     else Box(Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.12f)))
                 }
+            }
+        }
+        }
+        if (canDelete) {
+            Surface(
+                color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp)
+                    .testTag("delete-home-page-$index")
+                    .clickable(onClick = onDeletePage),
+                shadowElevation = 3.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 19.sp, lineHeight = 19.sp) }
             }
         }
     }
@@ -2086,7 +2207,33 @@ LaunchedEffect(apps) {
             if (members.isEmpty()) null else name to members
         }
     }
-    Column(Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)) {
+    Column(
+        Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)
+            .testTag("app-drawer-surface")
+            .pointerInput(drawerListState) {
+                awaitEachGesture {
+                    awaitPointerEventScope {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        var closeGestureHandled = false
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            val dy = change.position.y - down.position.y
+                            val topReached = drawerListState.firstVisibleItemIndex == 0 && drawerListState.firstVisibleItemScrollOffset == 0
+                            val layout = drawerListState.layoutInfo
+                            val bottomReached = layout.totalItemsCount > 0 && layout.visibleItemsInfo.lastOrNull()?.index == layout.totalItemsCount - 1
+                            if (!closeGestureHandled && dy > viewConfiguration.touchSlop * 2f && topReached) {
+                                closeGestureHandled = true
+                                close()
+                            } else if (!closeGestureHandled && dy < -viewConfiguration.touchSlop * 2f && bottomReached) {
+                                closeGestureHandled = true
+                                close()
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                }
+            }
+    ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
     Spacer(Modifier.height(10.dp))
@@ -2131,7 +2278,7 @@ LaunchedEffect(apps) {
     }
 
     Spacer(Modifier.height(8.dp))
-        LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.testTag("app-drawer-list")) {
             categories.forEach { (title, members) ->
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
                 items(members.chunked(4), key = { row -> "$title-${row.joinToString { it.pkg }}" }) { row ->

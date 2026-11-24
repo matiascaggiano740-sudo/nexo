@@ -155,6 +155,11 @@ monitor_test() {
 
 methods=(
   longPressingHomeAppDoesNotEnterPageEdit
+  swipeUpOnHomeOpensTheAppDrawer
+  swipeDownAtTopOfDrawerClosesIt
+  emptyPageCanBeDeletedFromItsPreview
+  populatedPageDeletionRequiresConfirmation
+  deletingPageWithWidgetConfirmsAndRemovesItsPlacement
   appDrawerOpensAndClosesFromExplicitControls
   systemBackClosesTheAppDrawer
   newPageStaysEmptyAndPagesCanBeSelectedIndependently

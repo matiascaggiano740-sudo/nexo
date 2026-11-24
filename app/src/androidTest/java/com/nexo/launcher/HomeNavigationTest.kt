@@ -11,6 +11,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.longClick
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -44,6 +46,96 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("finish-home-edit").assertCountEquals(0)
         assertTrue("The home app should remain visible", composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
+    fun swipeUpOnHomeOpensTheAppDrawer() {
+        composeRule.onNodeWithTag("home-surface").performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
+    }
+
+    @Test
+    fun swipeDownAtTopOfDrawerClosesIt() {
+        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        composeRule.onNodeWithTag("app-drawer-surface").performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("open-app-drawer").assertCountEquals(1)
+    }
+
+    @Test
+    fun emptyPageCanBeDeletedFromItsPreview() {
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("add-home-page").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(0)
+    }
+
+    @Test
+    fun populatedPageDeletionRequiresConfirmation() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val appPackage = composeRule.activity.packageManager
+            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+            ?.activityInfo?.packageName
+        assertTrue("The emulator must provide a launchable app for page deletion test", appPackage != null)
+        val occupiedPage = MutableList(28) { "-" }.apply { this[8] = appPackage!! }
+        val emptyPage = MutableList(28) { "-" }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", listOf(occupiedPage, emptyPage).joinToString("~") { it.joinToString("|") })
+            .putString("packages", occupiedPage.joinToString("|"))
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-0").performClick()
+        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
+        composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-0").performClick()
+        composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
+        val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
+        assertTrue("Deleting a populated page should persist the remaining page", !savedPages.contains("~"))
+    }
+
+    @Test
+    fun deletingPageWithWidgetConfirmsAndRemovesItsPlacement() {
+        val first = MutableList(28) { "-" }
+        val second = MutableList(28) { "-" }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", listOf(first, second).joinToString("~") { it.joinToString("|") })
+            .putString("packages", first.joinToString("|"))
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        val allocatedWidgetId = java.util.concurrent.atomic.AtomicInteger(-1)
+        composeRule.activityRule.scenario.onActivity { activity ->
+            val host = android.appwidget.AppWidgetHost(activity, 0x4E45584F)
+            val id = host.allocateAppWidgetId()
+            allocatedWidgetId.set(id)
+            activity.hostedWidgetIds.add(id)
+            activity.hostedWidgetPages[id] = 1
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
+        composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
+        composeRule.waitForIdle()
+        composeRule.activityRule.scenario.onActivity { activity ->
+            assertTrue("Removed page widget must no longer be hosted", allocatedWidgetId.get() !in activity.hostedWidgetIds)
+            assertTrue("Removed page widget must no longer have a page mapping", allocatedWidgetId.get() !in activity.hostedWidgetPages)
+        }
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
     }
 
     @Test
