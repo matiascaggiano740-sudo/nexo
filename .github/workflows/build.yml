@@ -1,6 +1,9 @@
 name: Build NEXO
 
 on:
+  push:
+    branches:
+      - zapia/launcher-refresh
   workflow_dispatch:
 
 jobs:
