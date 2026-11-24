@@ -33,7 +33,7 @@ class HomeNavigationTest {
         }
 
         try {
-            composeRule.onAllNodesWithTag("home-page-app").onFirst().performTouchInput { longClick() }
+            composeRule.onAllNodesWithTag("home-page-app").get(0).performTouchInput { longClick() }
             composeRule.waitForIdle()
             composeRule.onAllNodesWithTag("finish-home-edit").assertCountEquals(0)
             assertTrue("A long press on a home app must start Android drag-and-drop", dragStarted.get())
