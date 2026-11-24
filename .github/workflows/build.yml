@@ -43,11 +43,14 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim
           script: |
-            gradle connectedDebugAndroidTest --no-daemon
-            test_status=$?
+            if gradle connectedDebugAndroidTest --no-daemon; then
+              test_status=0
+            else
+              test_status=$?
+            fi
             mkdir -p app/build/diagnostics
             adb logcat -d -v threadtime > app/build/diagnostics/emulator-logcat.txt || true
-            exit $test_status
+            exit "$test_status"
         env:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
