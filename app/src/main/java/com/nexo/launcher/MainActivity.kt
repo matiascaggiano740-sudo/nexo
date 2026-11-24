@@ -24,6 +24,8 @@ class MainActivity : ComponentActivity() {
     val hostedWidgetIds = mutableStateListOf<Int>()
     val hostedWidgetPages = mutableStateMapOf<Int, Int>()
     val hostedWidgetHeights = mutableStateMapOf<Int, Int>()
+    val homeCellHeightDp = androidx.compose.runtime.mutableFloatStateOf(72f)
+    val homeCellHeightMeasured = androidx.compose.runtime.mutableStateOf(false)
     val availableWidgetProviders = mutableStateListOf<AppWidgetProviderInfo>()
     private var pendingWidgetId: Int = AppWidgetManager.INVALID_APPWIDGET_ID
     private var pendingWidgetPage: Int = 0
@@ -110,7 +112,7 @@ class MainActivity : ComponentActivity() {
 
     fun launchWidgetPicker(page: Int, appCells: Int) {
         val usedRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page }
-            .sumOf { id -> ((widgetHeightDp(id) + 99) / 100).coerceAtLeast(1) }
+            .sumOf { id -> widgetRowsForHeight(widgetHeightDp(id), homeCellHeightDp.floatValue) }
         if (usedRows * 4 + appCells + 4 > 28) {
             Toast.makeText(this, "Esta página ya no tiene cuatro celdas libres para un widget", Toast.LENGTH_SHORT).show()
             return
@@ -200,9 +202,9 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Android ya no encuentra ese widget; elegí otro", Toast.LENGTH_LONG).show()
             return
         }
-        val addedRows = ((widgetInfo.minHeight.coerceAtLeast(96) + 99) / 100)
+        val addedRows = widgetRowsForHeight(widgetInfo.minHeight.coerceAtLeast(96), homeCellHeightDp.floatValue)
         val existingRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page }
-            .sumOf { widgetHeightDp(it).let { height -> (height + 99) / 100 } }
+            .sumOf { widgetHeightDp(it).let { height -> widgetRowsForHeight(height, homeCellHeightDp.floatValue) } }
         if ((existingRows + addedRows) * 4 + pendingWidgetAppCells > 28) {
             Toast.makeText(this, "El widget no entra en las celdas libres de esta página", Toast.LENGTH_LONG).show()
             widgetHost.deleteAppWidgetId(id)
@@ -218,8 +220,8 @@ class MainActivity : ComponentActivity() {
     fun moveWidgetToPage(id: Int, targetPage: Int, totalPages: Int, appCells: Int) {
         if (targetPage !in 0 until totalPages || id !in hostedWidgetIds) return
         val targetRows = hostedWidgetIds.filter { hostedWidgetPages[it] == targetPage && it != id }
-            .sumOf { (widgetHeightDp(it) + 99) / 100 }
-        val neededRows = (widgetHeightDp(id) + 99) / 100
+            .sumOf { widgetRowsForHeight(widgetHeightDp(it), homeCellHeightDp.floatValue) }
+        val neededRows = widgetRowsForHeight(widgetHeightDp(id), homeCellHeightDp.floatValue)
         if ((hostedWidgetPages[id] ?: 0) != targetPage && (targetRows + neededRows) * 4 + appCells > 28) {
             Toast.makeText(this, "No hay espacio libre para ese widget en la página", Toast.LENGTH_SHORT).show()
             return
@@ -342,15 +344,15 @@ class MainActivity : ComponentActivity() {
         if (!canResizeWidget(id)) return
         val page = hostedWidgetPages[id] ?: 0
         val pageRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page && it != id }
-            .sumOf { other -> (widgetHeightDp(other) + 99) / 100 }
+            .sumOf { other -> widgetRowsForHeight(widgetHeightDp(other), homeCellHeightDp.floatValue) }
         val minHeight = info.minResizeHeight.takeIf { it > 0 } ?: info.minHeight.coerceAtLeast(90)
-        if (pageRows * 4 + appCells + ((minHeight + 99) / 100) * 4 > 28) return
+        if (pageRows * 4 + appCells + widgetRowsForHeight(minHeight, homeCellHeightDp.floatValue) * 4 > 28) return
         val pageMaxRows = ((28 - appCells) / 4 - pageRows).coerceAtLeast(1)
-        val pageMaxHeight = pageMaxRows * 100
+        val pageMaxHeight = widgetSpanHeightDp(pageMaxRows, homeCellHeightDp.floatValue).toInt()
         val declaredMaxHeight = info.maxResizeHeight.takeIf { it > 0 } ?: 700
         val maxHeight = minOf(declaredMaxHeight, pageMaxHeight).coerceAtLeast(minHeight)
         val newHeight = (widgetHeightDp(id) + deltaDp).coerceIn(minHeight, maxHeight)
-        if (pageRows * 4 + appCells + ((newHeight + 99) / 100) * 4 > 28) {
+        if (pageRows * 4 + appCells + widgetRowsForHeight(newHeight, homeCellHeightDp.floatValue) * 4 > 28) {
             Toast.makeText(this, "No hay suficientes celdas libres para agrandar el widget", Toast.LENGTH_SHORT).show()
             return
         }
