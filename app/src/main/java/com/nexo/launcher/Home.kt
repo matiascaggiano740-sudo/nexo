@@ -791,7 +791,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     repeat(4) { dockIndex ->
                         val dockApp = dockPackages.getOrNull(dockIndex)?.let { pkg -> apps.find { it.pkg == pkg } }
                         DockCell(modifier = Modifier.weight(1f).fillMaxHeight(), app = dockApp, index = dockIndex, editing = editingHome,
-                            onLongPress = { editingHome = true },
                             onRemove = {
                                 val updated = dockPackages.toMutableList().apply { while (size < 4) add("-"); this[dockIndex] = "-" }
                                 dockPackages = updated
@@ -1751,7 +1750,7 @@ private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun DockCell(
-    modifier: Modifier, app: AppItem?, index: Int, editing: Boolean, onLongPress: () -> Unit,
+    modifier: Modifier, app: AppItem?, index: Int, editing: Boolean,
     onRemove: () -> Unit, onDrop: (String) -> Unit
 ) {
     val target = remember(index, onDrop) {
@@ -1770,7 +1769,7 @@ private fun DockCell(
             ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
     ), contentAlignment = Alignment.Center) {
         if (app != null) AppIcon(app, 52.dp, Color.White, showLabel = false,
-            onLongPress = onLongPress, dragPayload = "dock:${app.pkg}", testTag = "dock-app-${app.pkg}")
+            dragPayload = "dock:${app.pkg}", testTag = "dock-app-${app.pkg}")
         if (editing && app != null) Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
             modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { onRemove() }) {
             Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 15.sp, lineHeight = 15.sp) }
@@ -1835,7 +1834,6 @@ private fun HomeAppCell(
                 showLabel = homeIconSizing(cellHeight.value).showLabel,
                 labelFontSize = 11.sp,
                 testTag = "home-page-app",
-                onLongPress = onLongPress,
                 dragPayload = "home:${app.pkg}"
             )
             if (editingHome) {

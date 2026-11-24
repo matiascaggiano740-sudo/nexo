@@ -4,6 +4,8 @@ import androidx.compose.ui.test.assertCountEquals
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
+import android.view.DragEvent
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,6 +21,29 @@ import org.junit.Test
 class HomeNavigationTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun longPressingHomeAppStartsDragWithoutEnteringPageEdit() {
+        val dragStarted = AtomicBoolean(false)
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.window.decorView.setOnDragListener { _, event ->
+                if (event.action == DragEvent.ACTION_DRAG_STARTED) dragStarted.set(true)
+                false
+            }
+        }
+
+        try {
+            composeRule.onAllNodesWithTag("home-page-app").onFirst().performTouchInput { longClick() }
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithTag("finish-home-edit").assertCountEquals(0)
+            assertTrue("A long press on a home app must start Android drag-and-drop", dragStarted.get())
+            assertTrue("The home app should remain visible", composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty())
+        } finally {
+            composeRule.activityRule.scenario.onActivity { activity ->
+                activity.window.decorView.setOnDragListener(null)
+            }
+        }
+    }
 
     @Test
     fun appDrawerOpensAndClosesFromExplicitControls() {
