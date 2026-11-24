@@ -24,6 +24,24 @@ class HomeNavigationTest {
 
     @Test
     fun longPressingHomeAppStartsDragWithoutEnteringPageEdit() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val appPackage = composeRule.activity.packageManager
+            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+            ?.activityInfo?.packageName
+        assertTrue("The emulator must provide a launchable app for this gesture test", appPackage != null)
+
+        val page = MutableList(28) { "-" }
+        page[8] = appPackage!!
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
+        }
+
         val dragStarted = AtomicBoolean(false)
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.window.decorView.setOnDragListener { _, event ->
