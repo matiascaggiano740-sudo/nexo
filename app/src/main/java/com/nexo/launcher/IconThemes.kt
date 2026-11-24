@@ -85,6 +85,8 @@ fun themedIconResource(theme: IconTheme, packageName: String): Int? = when (them
     IconTheme.CRAYON -> when (packageName) {
         "com.android.settings", "com.miui.securitycenter" -> R.drawable.icon_crayon_settings
         "com.google.android.keep" -> R.drawable.icon_crayon_keep
+        "com.miui.weather2", "com.google.android.apps.weather" -> R.drawable.icon_crayon_weather
+        "com.google.android.apps.messaging", "com.android.mms", "com.android.messaging", "com.samsung.android.messaging" -> R.drawable.icon_crayon_message_bubble
         "com.whatsapp", "com.whatsapp.w4b" -> R.drawable.icon_crayon_whatsapp
         "com.zhiliaoapp.musically", "com.ss.android.ugc.trill" -> R.drawable.icon_crayon_tiktok
         "com.google.android.googlequicksearchbox" -> R.drawable.icon_crayon_google
