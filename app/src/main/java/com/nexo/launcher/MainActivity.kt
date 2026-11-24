@@ -314,9 +314,13 @@ class MainActivity : ComponentActivity() {
                 val maximum = info.maxResizeHeight.takeIf { it > 0 } ?: 700
                 val height = spec.optInt("heightDp", minimum).coerceIn(minimum, maxOf(minimum, maximum))
                 hostedWidgetHeights[match] = height
+                val allocatedHeight = widgetSpanHeightDp(
+                    widgetRowsForHeight(height, homeCellHeightDp.floatValue),
+                    homeCellHeightDp.floatValue
+                ).toInt()
                 manager.updateAppWidgetOptions(match, Bundle().apply {
-                    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, height)
-                    putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, height)
+                    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, allocatedHeight)
+                    putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
                 })
             }
             restored++
@@ -358,9 +362,13 @@ class MainActivity : ComponentActivity() {
         }
         hostedWidgetHeights[id] = newHeight
         getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().putInt("height_$id", newHeight).apply()
+        val allocatedHeight = widgetSpanHeightDp(
+            widgetRowsForHeight(newHeight, homeCellHeightDp.floatValue),
+            homeCellHeightDp.floatValue
+        ).toInt()
         AppWidgetManager.getInstance(this).updateAppWidgetOptions(id, Bundle().apply {
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, newHeight)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, newHeight)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, allocatedHeight)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
         })
     }
 
@@ -371,9 +379,13 @@ class MainActivity : ComponentActivity() {
         manager.updateAppWidgetOptions(id, Bundle().apply {
             putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, widthDp)
             putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, widthDp)
-            val height = widgetHeightDp(id)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, height)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, height)
+            val requestedHeight = widgetHeightDp(id)
+            val allocatedHeight = widgetSpanHeightDp(
+                widgetRowsForHeight(requestedHeight, homeCellHeightDp.floatValue),
+                homeCellHeightDp.floatValue
+            ).toInt()
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, allocatedHeight)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
         })
         widgetHost.createView(this, id, info).apply { setAppWidget(id, info) }
     }.getOrNull()
