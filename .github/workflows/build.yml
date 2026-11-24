@@ -33,6 +33,9 @@ jobs:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
 
+      - name: Validar sintaxis del script de diagnóstico
+        run: bash -n scripts/diagnose-emulator.sh
+
       - name: Ejecutar pruebas instrumentadas en emulador Android 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -40,17 +43,11 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          cores: 2
+          ram-size: 3072M
           disable-animations: true
-          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim
-          script: |
-            if gradle connectedDebugAndroidTest --no-daemon; then
-              test_status=0
-            else
-              test_status=$?
-            fi
-            mkdir -p app/build/diagnostics
-            adb logcat -d -v threadtime > app/build/diagnostics/emulator-logcat.txt || true
-            exit "$test_status"
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash scripts/diagnose-emulator.sh
         env:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
@@ -63,6 +60,6 @@ jobs:
             app/build/outputs/apk/release/app-release.apk
             app/build/reports/androidTests/connected/debug/
             app/build/outputs/androidTest-results/connected/debug/
-            app/build/diagnostics/emulator-logcat.txt
+            app/build/diagnostics/
           if-no-files-found: warn
 
