@@ -251,10 +251,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
     fun requestDeleteHomePage(index: Int) {
         if (index !in homePages.indices || homePages.size <= 1) return
-        val hasApps = homePages[index].any { it.isNotBlank() && it != "-" } ||
-            (index == 0 && homePages[index].isEmpty() && defaultHomeApps.isNotEmpty())
-        val hasWidgets = launcherActivity?.hostedWidgetPages?.values?.any { it == index } == true
-        if (hasApps || hasWidgets) pagePendingDelete = index else deleteHomePage(index)
+        pagePendingDelete = index
     }
 
     fun showShortcutsFor(app: AppItem) {
@@ -1195,10 +1192,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             if (index == 0 && page.isEmpty()) defaultHomeApps.size else page.count { it.isNotBlank() && it != "-" }
         } ?: 0
         val widgetCount = launcherActivity?.hostedWidgetPages?.values?.count { it == index } ?: 0
+        val hasContent = appCount > 0 || widgetCount > 0
         AlertDialog(
             onDismissRequest = { pagePendingDelete = null },
             title = { Text("¿Borrar página ${index + 1}?") },
-            text = { Text("Esta página contiene $appCount aplicación(es) y $widgetCount widget(s). Se quitarán junto con la página.") },
+            text = {
+                Text(if (hasContent) "Esta página contiene $appCount aplicación(es) y $widgetCount widget(s). Se quitarán junto con la página."
+                else "La página está vacía. ¿Querés eliminarla?")
+            },
             confirmButton = { TextButton(modifier = Modifier.testTag("confirm-delete-home-page"), onClick = {
                 pagePendingDelete = null
                 deleteHomePage(index)

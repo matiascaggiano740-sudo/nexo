@@ -69,9 +69,13 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("add-home-page").performClick()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
         composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
+        composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
-        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(0)
     }
 
     @Test
@@ -124,6 +128,7 @@ class HomeNavigationTest {
             allocatedWidgetId.set(id)
             activity.hostedWidgetIds.add(id)
             activity.hostedWidgetPages[id] = 1
+            assertEquals("Test widget must be assigned to page 2", 1, activity.hostedWidgetPages[id])
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
