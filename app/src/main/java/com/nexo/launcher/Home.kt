@@ -1703,7 +1703,7 @@ private fun HomeMiniPagePreview(
             border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
             modifier = Modifier.fillMaxSize().testTag("page-preview-$index").semantics {
                 contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
-            }.clickable(onClick = onClick)
+            }
         ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
@@ -1713,13 +1713,7 @@ private fun HomeMiniPagePreview(
                 Text("Pantalla ${index + 1}", color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 if (canDelete) {
                     IconButton(
-                        onClick = {
-                            if (packages.any { it.isNotBlank() && it != "-" } || widgetIds.isNotEmpty()) {
-                                pendingDelete = true
-                            } else {
-                                onDeletePage()
-                            }
-                        },
+                        onClick = { pendingDelete = true },
                         modifier = Modifier.size(36.dp).testTag("delete-home-page-$index")
                             .semantics { contentDescription = "Borrar página ${index + 1}" }
                     ) {
@@ -1731,7 +1725,7 @@ private fun HomeMiniPagePreview(
             }
             Text("$timeText   ·   $dateText", color = Cream.copy(alpha = 0.7f), fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(5.dp))
-            Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(27.dp)) {
+            Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().height(27.dp).clickable(onClick = onClick)) {
                 Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
                     Text(weatherText, color = Cream, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -1740,7 +1734,7 @@ private fun HomeMiniPagePreview(
             widgetPreviews.forEachIndexed { widgetIndex, (label, preview) ->
                 Surface(
                     color = Color.White.copy(alpha = 0.10f), shape = RoundedCornerShape(9.dp),
-                    modifier = Modifier.fillMaxWidth().height(34.dp).testTag("page-preview-$index-widget-$widgetIndex")
+                    modifier = Modifier.fillMaxWidth().height(34.dp).testTag("page-preview-$index-widget-$widgetIndex").clickable(onClick = onClick)
                 ) {
                     if (preview != null) {
                         Image(preview, contentDescription = label, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -1795,7 +1789,7 @@ private fun HomeMiniPagePreview(
                     Text(quote, color = Cream, fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
                 }
             }
-            Surface(color = Color.White.copy(alpha = 0.13f), shape = RoundedCornerShape(11.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(22.dp)) {
+            Surface(color = Color.White.copy(alpha = 0.13f), shape = RoundedCornerShape(11.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(22.dp).clickable(onClick = onClick)) {
                 Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) { Text("Buscar apps y web", color = Cream.copy(alpha = 0.8f), fontSize = 7.sp) }
             }
             Row(Modifier.fillMaxWidth().padding(top = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
