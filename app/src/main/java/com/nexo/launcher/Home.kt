@@ -1628,7 +1628,7 @@ private fun HomeEditOverview(
                     canDelete = pages.size > 1,
                     onDeletePage = { onDeletePage(index) },
                     onClick = { onSelectPage(index) },
-                    modifier = Modifier.fillMaxHeight(0.94f).width(238.dp).testTag("page-preview-$index")
+                    modifier = Modifier.fillMaxHeight(0.94f).width(238.dp)
                 )
             }
         }
@@ -1699,7 +1699,7 @@ private fun HomeMiniPagePreview(
         Surface(
             color = Color(0xFF292722), shape = RoundedCornerShape(24.dp),
             border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
-            modifier = Modifier.fillMaxSize().semantics {
+            modifier = Modifier.fillMaxSize().testTag("page-preview-$index").semantics {
                 contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
             }.clickable(onClick = onClick)
         ) {
