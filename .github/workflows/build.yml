@@ -21,6 +21,11 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: 8d9427a33f8bb20c7bb524a3df2715110bf7feac
+
+      - name: Assert exact approved source checkout
+        run: test "$(git rev-parse HEAD)" = "8d9427a33f8bb20c7bb524a3df2715110bf7feac"
 
       - name: Verify Bash 3.2 and syntax compatibility
         shell: bash
@@ -47,6 +52,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: 8d9427a33f8bb20c7bb524a3df2715110bf7feac
+
+      - name: Assert exact approved source checkout
+        run: test "$(git rev-parse HEAD)" = "8d9427a33f8bb20c7bb524a3df2715110bf7feac"
 
       - name: Enable KVM group permissions
         run: |
@@ -216,6 +226,24 @@ jobs:
           "$apksigner" verify --verbose "$apk"
           signer=$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$signer" = "$EXPECTED_CERT_SHA256" || { echo 'Release certificate mismatch; do not distribute this APK.' >&2; exit 1; }
+          config_file=$(find app/build/generated/source/buildConfig/release -name BuildConfig.java -o -name BuildConfig.kt | head -n 1)
+          test -n "$config_file"
+          grep -F 'NEXO_RELEASES_API_URL = "https://api.github.com/repos/matiascaggiano740-sudo/nexo/releases/latest"' "$config_file"
+          grep -F 'NEXO_ALLOW_TEST_LOOPBACK_HTTP = false' "$config_file"
+          mkdir -p candidate
+          cp "$apk" candidate/app-release.apk
+          {
+            echo 'source_commit=8d9427a33f8bb20c7bb524a3df2715110bf7feac'
+            echo 'applicationId=com.nexo.launcher'
+            echo "versionCode=$version_code"
+            echo "versionName=$version_name"
+            echo 'apk_path=candidate/app-release.apk'
+            echo "apk_size_bytes=$(stat -c '%s' candidate/app-release.apk)"
+            echo "apk_sha256=$(sha256sum candidate/app-release.apk | awk '{print toupper($1)}')"
+            echo "signing_certificate_sha256=$signer"
+          } | tee candidate/metadata.txt
+          cp signing-details.txt candidate/signing-details.txt
+          cp <("$aapt" dump badging "$apk") candidate/aapt-badging.txt
 
       - name: Probar actualización firmada y persistencia en emulador desde APK histórico
         uses: reactivecircus/android-emulator-runner@v2
@@ -233,6 +261,14 @@ jobs:
           EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+
+      - name: Publish exact tested Release candidate as a CI artifact (no public release)
+        uses: actions/upload-artifact@v6
+        with:
+          name: NEXO-Release-candidate-8d9427a
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 30
 
       - uses: actions/upload-artifact@v6
         if: always()
