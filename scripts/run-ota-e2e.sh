@@ -36,18 +36,23 @@ grep -Eq 'com\.android\.packageinstaller|com\.google\.android\.packageinstaller|
 # Confirm only inside the disposable CI emulator, through Android's own installer UI.
 installed=0
 confirmed=0
-for attempt in $(seq 1 8); do
+for attempt in $(seq 1 25); do
   adb shell uiautomator dump /sdcard/nexo-installer-window.xml >/dev/null 2>&1 || true
   xml="$(adb shell cat /sdcard/nexo-installer-window.xml 2>/dev/null | tr -d '\r')"
   printf '%s\n' "$xml" > "$ARTIFACTS/installer-ui-attempt-$attempt.xml"
-  bounds="$(printf '%s' "$xml" | python3 -c 'import sys,xml.etree.ElementTree as E; s=sys.stdin.read();
+  action="$(printf '%s' "$xml" | python3 -c 'import sys,xml.etree.ElementTree as E; s=sys.stdin.read();
 try:
  r=E.fromstring(s)
- for n in r.iter("node"):
-  if n.get("clickable")=="true" and n.get("text","").strip().lower() in {"install","update"}:
-   print(n.get("bounds","")); break
+ nodes=list(r.iter("node"))
+ for n in nodes:
+  if n.get("package")=="android" and n.get("resource-id")=="android:id/aerr_wait" and n.get("clickable")=="true": print("wait|"+n.get("bounds","")); break
+ else:
+  for n in nodes:
+   if n.get("clickable")=="true" and n.get("enabled")=="true" and n.get("text","").strip().lower() in {"install","update"}: print("install|"+n.get("bounds","")); break
 except Exception: pass')"
-  if [[ -n "$bounds" ]]; then
+  if [[ -n "$action" ]]; then
+    kind="${action%%|*}"
+    bounds="${action#*|}"
     read -r x y < <(python3 - "$bounds" <<'PY'
 import re,sys
 m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',sys.argv[1])
@@ -55,10 +60,15 @@ if not m: raise SystemExit(1)
 a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2)
 PY
 )
-    echo "Installer confirmation button bounds=$bounds center=$x,$y" | tee "$ARTIFACTS/installer-confirmation.txt"
-    adb shell input tap "$x" "$y"
-    confirmed=1
-    break
+    if [[ "$kind" == wait ]]; then
+      echo "Emulator showed Android 'Pixel Launcher isn’t responding'; pressing system Wait at $bounds, attempt $attempt." | tee -a "$ARTIFACTS/installer-confirmation.txt"
+      adb shell input tap "$x" "$y"
+    else
+      echo "Installer confirmation button bounds=$bounds center=$x,$y" | tee -a "$ARTIFACTS/installer-confirmation.txt"
+      adb shell input tap "$x" "$y"
+      confirmed=1
+      break
+    fi
   fi
   sleep 2
 done
