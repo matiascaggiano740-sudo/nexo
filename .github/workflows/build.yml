@@ -27,10 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: d121ce340e69fe28b5b4e2cfe72199de38db47d9
+          ref: ${{ github.sha }}
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "d121ce340e69fe28b5b4e2cfe72199de38db47d9"
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Verify Bash 3.2 and syntax compatibility
         shell: bash
@@ -57,10 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: d121ce340e69fe28b5b4e2cfe72199de38db47d9
+          ref: ${{ github.sha }}
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "d121ce340e69fe28b5b4e2cfe72199de38db47d9"
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Enable KVM group permissions
         run: |
@@ -249,7 +249,7 @@ jobs:
           mkdir -p candidate
           cp "$apk" candidate/app-release.apk
           {
-            echo 'source_commit=d121ce340e69fe28b5b4e2cfe72199de38db47d9 (launcher fixes and test correction based on tested NEXO branch)'
+            echo "source_commit=$GITHUB_SHA"
             echo 'applicationId=com.nexo.launcher'
             echo "versionCode=$version_code"
             echo "versionName=$version_name"
@@ -281,7 +281,7 @@ jobs:
       - name: Publish exact tested Release candidate as a CI artifact (no public release)
         uses: actions/upload-artifact@v6
         with:
-          name: NEXO-Release-candidate-0b6d05b
+          name: NEXO-Release-candidate-${{ github.sha }}
           path: candidate/
           if-no-files-found: error
           retention-days: 30

@@ -111,10 +111,6 @@ class MainActivity : ComponentActivity() {
         runCatching { (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).lockNow() }
     }
 
-    fun isDefaultHomeRoleHeld(): Boolean = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-        getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_HOME) == true
-    } else false
-
     fun requestDefaultHomeRole() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             val roles = getSystemService(RoleManager::class.java)

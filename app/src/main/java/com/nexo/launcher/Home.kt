@@ -225,17 +225,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(isForeground) {
-        val activity = launcherActivity ?: return@LaunchedEffect
-        val launchedFromAppIcon = activity.intent?.categories?.contains(Intent.CATEGORY_LAUNCHER) == true
-        val preferences = ctx.getSharedPreferences("nexo_home", 0)
-        if (isForeground && launchedFromAppIcon && !activity.isDefaultHomeRoleHeld() &&
-            !preferences.getBoolean("home_role_prompted", false)) {
-            preferences.edit().putBoolean("home_role_prompted", true).apply()
-            delay(500)
-            activity.requestDefaultHomeRole()
-        }
-    }
     var dragPreview by remember { mutableStateOf<Pair<AppItem, ComposeOffset>?>(null) }
     var city by remember { mutableStateOf(savedCity(ctx)) }
     var weather by remember { mutableStateOf<WeatherInfo?>(null) }
