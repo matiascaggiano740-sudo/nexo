@@ -53,6 +53,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect as ComposeRect
+import androidx.compose.ui.geometry.Offset as ComposeOffset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
@@ -69,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -77,6 +79,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
@@ -87,17 +92,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -211,6 +212,31 @@ fun Home() {
 var lastPackageRefresh by remember { mutableStateOf(0) }
     var openFolder by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isForeground by remember { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> isForeground = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> isForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(isForeground) {
+        val activity = launcherActivity ?: return@LaunchedEffect
+        val launchedFromAppIcon = activity.intent?.categories?.contains(Intent.CATEGORY_LAUNCHER) == true
+        val preferences = ctx.getSharedPreferences("nexo_home", 0)
+        if (isForeground && launchedFromAppIcon && !activity.isDefaultHomeRoleHeld() &&
+            !preferences.getBoolean("home_role_prompted", false)) {
+            preferences.edit().putBoolean("home_role_prompted", true).apply()
+            delay(500)
+            activity.requestDefaultHomeRole()
+        }
+    }
+    var dragPreview by remember { mutableStateOf<Pair<AppItem, ComposeOffset>?>(null) }
     var city by remember { mutableStateOf(savedCity(ctx)) }
     var weather by remember { mutableStateOf<WeatherInfo?>(null) }
     var editCity by remember { mutableStateOf(false) }
@@ -486,10 +512,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         ContextCompat.registerReceiver(ctx, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         onDispose { runCatching { ctx.unregisterReceiver(receiver) } }
     }
-    LaunchedEffect(Unit) {
-        while (true) { now = LocalDateTime.now(); delay(60_000L - System.currentTimeMillis() % 60_000L) }
+    LaunchedEffect(isForeground) {
+        while (isForeground) {
+            now = LocalDateTime.now()
+            delay(60_000L - System.currentTimeMillis() % 60_000L)
+        }
     }
-    LaunchedEffect(city) {
+    LaunchedEffect(city, isForeground) {
+        if (!isForeground) return@LaunchedEffect
         while (city.isNotBlank()) {
             weather = withContext(Dispatchers.IO) { loadWeather(city) } ?: weather
             delay(30 * 60_000L)
@@ -744,6 +774,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onCellBoundsChanged = { cellIndex, bounds -> homeCellBounds[cellIndex] = bounds },
                         onDockDrop = { payload, targetIndex -> dropAppOnDock(targetIndex, payload) },
                         onPageDrop = { payload, targetIndex -> dropAppOnHomePage(targetIndex, payload) },
+                        onDragPreview = { item, position -> dragPreview = if (item != null && position != null) item to position else null },
+                        isDragged = dragPreview?.first?.pkg == app?.pkg,
                         onDrop = { payload, targetIndex ->
                             val fromDock = payload.startsWith("dock:")
                             val draggedPkg = payload.removePrefix("home:").removePrefix("dock:")
@@ -874,8 +906,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 DropdownMenuItem(text = { Text("Administrar páginas") }, onClick = { showHomeMoreActions = false; showPageManager = true })
                                 DropdownMenuItem(text = { Text("Opciones de inicio de Android") }, onClick = {
                                     showHomeMoreActions = false
-                                    runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_HOME_SETTINGS)) }
-                                        .onFailure { Toast.makeText(ctx, "No se pudieron abrir las opciones de inicio de Android", Toast.LENGTH_LONG).show() }
+                                    launcherActivity?.requestDefaultHomeRole()
                                 })
                                 DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
                                 DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
@@ -1005,7 +1036,24 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 onIcons = { editingHome = false; showIconThemeDialog = true },
                 onManage = { editingHome = false; showPageManager = true },
                 onSettings = { editingHome = false; showSettingsDialog = true },
-                onBackup = { editingHome = false; showBackupDialog = true }
+                onBackup = { editingHome = false; showBackupDialog = true },
+                onLockScreen = { showLockAdminDialog = true },
+                onChooseLauncher = { launcherActivity?.requestDefaultHomeRole() }
+            )
+        }
+        dragPreview?.let { (item, position) ->
+            val density = LocalDensity.current.density
+            Image(
+                bitmap = item.icon,
+                contentDescription = "Moviendo ${item.label}",
+                modifier = Modifier
+                    .offset { IntOffset((position.x - 30.dp.value * density).toInt(), (position.y - 30.dp.value * density).toInt()) }
+                    .size(60.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .graphicsLayer { alpha = 0.88f; shadowElevation = 14.dp.toPx() }
+                    .zIndex(30f)
+                    .testTag("dragging-app-preview"),
+                contentScale = ContentScale.Crop
             )
         }
     }
@@ -1014,20 +1062,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         onDismissRequest = { launcherActivity?.cancelWidgetPicker() },
         title = { Text("Elegí un widget") },
         text = {
-            LazyColumn(Modifier.heightIn(max = 480.dp)) {
+            LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(availableWidgetProviders, key = { it.provider.flattenToString() }) { provider ->
-                    val label = runCatching { provider.loadLabel(ctx.packageManager).toString() }
-                        .getOrDefault(provider.provider.className)
-                    Column(
-                        Modifier.fillMaxWidth().clickable {
-                            launcherActivity?.selectWidgetProvider(provider)
-                        }.padding(vertical = 10.dp, horizontal = 4.dp)
-                    ) {
-                        Text(label, style = MaterialTheme.typography.titleSmall)
-                        Text(provider.provider.packageName, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    WidgetProviderPreviewCard(provider) {
+                        launcherActivity?.selectWidgetProvider(provider)
                     }
-                    HorizontalDivider()
                 }
             }
         },
@@ -1087,7 +1126,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         confirmButton = { TextButton(onClick = {
             shortcutTarget = null
             shortcutAccessDenied = false
-            runCatching { ctx.startActivity(Intent(android.provider.Settings.ACTION_HOME_SETTINGS)) }
+            launcherActivity?.requestDefaultHomeRole()
         }) { Text("Elegir launcher") } },
         dismissButton = { TextButton(onClick = { shortcutTarget = null; shortcutAccessDenied = false }) { Text("Cerrar") } }
     )
@@ -1591,12 +1630,13 @@ fun AppIcon(
     onContextMenu: (() -> Unit)? = null,
     dragPayload: String? = null,
     testTag: String? = null,
-    longPressEnabled: Boolean = true
+    longPressEnabled: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     val ctx = LocalContext.current
     val dragView = LocalView.current
     val density = LocalDensity.current.density
-    val iconModifier = Modifier
+    val iconModifier = modifier
         .width(size + 12.dp)
         .then(if (testTag == null) Modifier else Modifier.testTag(testTag))
         .then(if (longPressEnabled) Modifier.combinedClickable(
@@ -1664,7 +1704,9 @@ private fun HomeEditOverview(
     onIcons: () -> Unit,
     onManage: () -> Unit,
     onSettings: () -> Unit,
-    onBackup: () -> Unit
+    onBackup: () -> Unit,
+    onLockScreen: () -> Unit,
+    onChooseLauncher: () -> Unit
 ) {
     Column(
         Modifier.fillMaxSize()
@@ -1717,19 +1759,22 @@ private fun HomeEditOverview(
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
             textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
         )
-        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                HomeEditActionCard("Widgets", "Agregar widgets", Modifier.weight(1f), onWidget)
-                HomeEditActionCard("Fondo", "Cambiar imagen", Modifier.weight(1f), onWallpaper)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomeEditActionCard("Widgets", "Elegir con vista previa", Modifier.weight(1f), onWidget, testTag = "edit-widgets")
+                HomeEditActionCard("Fondo", "Cambiar imagen", Modifier.weight(1f), onWallpaper, testTag = "edit-wallpaper")
                 HomeEditActionCard("+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage, testTag = "add-home-page")
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                HomeEditActionCard("+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomeEditActionCard("+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder, testTag = "edit-folder")
                 HomeEditActionCard("Iconos", "Elegir estilo", Modifier.weight(1f), onIcons, testTag = "icon-theme-open")
-                HomeEditActionCard("Páginas", "Ordenar o borrar", Modifier.weight(1f), onManage)
+                HomeEditActionCard("Páginas", "Ordenar o borrar", Modifier.weight(1f), onManage, testTag = "edit-pages")
             }
-            HomeEditActionCard("Ajustes", "Launcher y actualizaciones", Modifier.fillMaxWidth(), onSettings, compact = true, testTag = "settings-card")
-            HomeEditActionCard("Respaldo", "Guardar o restaurar la distribución del inicio", Modifier.fillMaxWidth(), onBackup, compact = true)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomeEditActionCard("Doble toque", "Apagar pantalla", Modifier.weight(1f), onLockScreen, testTag = "edit-lock-screen")
+                HomeEditActionCard("Launcher", "Elegir predeterminado", Modifier.weight(1f), onChooseLauncher, testTag = "edit-choose-launcher")
+                HomeEditActionCard("Respaldo", "Guardar o restaurar", Modifier.weight(1f), onBackup, testTag = "edit-backup")
+            }
         }
     }
 }
@@ -1894,7 +1939,7 @@ private fun HomeEditActionCard(
         color = Color.White.copy(alpha = 0.095f),
         shape = RoundedCornerShape(17.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.11f)),
-        modifier = modifier.height(if (compact) 53.dp else 60.dp)
+        modifier = modifier.height(if (compact) 56.dp else 68.dp)
             .then(if (testTag == null) Modifier else Modifier.testTag(testTag)).clickable(onClick = onClick)
     ) {
         Column(
@@ -2006,6 +2051,8 @@ private fun HomeAppCell(
     onDockDrop: (String, Int) -> Unit,
     onPageDrop: (String, Int) -> Unit,
     onRemove: (String) -> Unit,
+    onDragPreview: (AppItem?, ComposeOffset?) -> Unit = { _, _ -> },
+    isDragged: Boolean = false,
     onDrop: (String, Int) -> Unit
 ) {
     val dropTarget = remember(editingHome, index, onDrop) {
@@ -2037,9 +2084,15 @@ private fun HomeAppCell(
                     val longPress = awaitLongPressOrCancellation(down.id)
                     if (longPress != null) {
                         var rootPosition = layoutCoordinates?.localToRoot(longPress.position) ?: longPress.position
-                        drag(down.id) { change ->
-                            change.consume()
-                            rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
+                        if (app != null) onDragPreview(app, rootPosition)
+                        try {
+                            drag(down.id) { change ->
+                                change.consume()
+                                rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
+                                if (app != null) onDragPreview(app, rootPosition)
+                            }
+                        } finally {
+                            if (app != null) onDragPreview(null, null)
                         }
                         val homeDestination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         val dockDestination = dockCellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
@@ -2079,7 +2132,8 @@ private fun HomeAppCell(
                 showLabel = homeIconSizing(cellHeight.value).showLabel,
                 labelFontSize = 11.sp,
                 testTag = "home-page-app",
-                longPressEnabled = false
+                longPressEnabled = false,
+                modifier = Modifier.graphicsLayer { alpha = if (isDragged) 0.28f else 1f }
             )
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
@@ -2271,6 +2325,57 @@ private fun AppWithCategoryMenu(
 
 }
 @Composable
+private fun WidgetProviderPreviewCard(provider: AppWidgetProviderInfo, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val label = remember(provider) {
+        runCatching { provider.loadLabel(context.packageManager).toString() }
+            .getOrDefault(provider.provider.className.substringAfterLast('.'))
+    }
+    val densityDpi = context.resources.displayMetrics.densityDpi
+    val preview = remember(provider, densityDpi) {
+        if (android.os.Build.VERSION.SDK_INT >= 28) runCatching {
+            provider.loadPreviewImage(context, densityDpi)?.let { drawable ->
+                val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 480
+                val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 240
+                drawable.toBitmap(width.coerceAtMost(720), height.coerceAtMost(480)).asImageBitmap()
+            }
+        }.getOrNull() else null
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().testTag("widget-provider-${provider.provider.packageName}")
+            .clickable(onClick = onClick)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.width(116.dp).height(104.dp)
+            ) {
+                if (preview != null) {
+                    Image(preview, contentDescription = "Vista previa de $label", modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                } else {
+                    Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("▦", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        Text("Vista previa no disponible", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(provider.provider.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${provider.minWidth} × ${provider.minHeight} dp", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(5.dp))
+                Text("Tocá para agregar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
 fun Drawer(apps: List<AppItem>, editingHome: Boolean, onAppLongPress: (AppItem) -> Unit = {}, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     val drawerListState = rememberLazyListState()
@@ -2292,33 +2397,11 @@ var manualCategories by remember {
             .toMap()
     )
 }
-LaunchedEffect(apps) {
-    val missing = apps.map { it.pkg }.filterNot { playCategories.containsKey(it) }
-    if (missing.isEmpty()) return@LaunchedEffect
-
-    val semaphore = Semaphore(4)
-    val fetched = coroutineScope {
-        missing.map { pkg ->
-            async {
-                semaphore.withPermit {
-                    runCatching {
-                        withContext(Dispatchers.IO) { loadPlayStoreCategory(pkg) }
-                    }.getOrNull()?.let { category -> pkg to category }
-                }
-            }
-        }.awaitAll().filterNotNull().toMap()
-    }
-
-    if (fetched.isNotEmpty()) {
-        val cache = ctx.getSharedPreferences("nexo_play_categories", 0).edit()
-        fetched.forEach { (pkg, category) -> cache.putString(pkg, category) }
-        cache.apply()
-        playCategories = playCategories + fetched
-    }
-}
       val categories = remember(apps, q, playCategories, manualCategories) {
-        val filtered = apps.filter { it.label.contains(q, ignoreCase = true) }
-         listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Comida", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
+        val filtered = apps.filter { it.label.contains(q.trim(), ignoreCase = true) }
+        if (q.isNotBlank()) {
+            if (filtered.isEmpty()) emptyList() else listOf("Resultados" to filtered.sortedBy { it.label.lowercase(Locale.ROOT) })
+        } else listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Comida", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
               val members = filtered.filter { app ->
     (
         manualCategories[app.pkg]
@@ -2402,18 +2485,31 @@ LaunchedEffect(apps) {
 
     Spacer(Modifier.height(8.dp))
         LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.testTag("app-drawer-list")) {
+            if (q.isNotBlank() && categories.isEmpty()) {
+                item(key = "empty-search") {
+                    Text("No se encontraron aplicaciones", color = Cream.copy(alpha = 0.72f), modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), textAlign = TextAlign.Center)
+                }
+            }
             categories.forEach { (title, members) ->
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
                 items(members.chunked(4), key = { row -> "$title-${row.joinToString { it.pkg }}" }) { row ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.Start) {
                         row.forEach { app ->
-    val launcherApps = ctx.getSystemService(LauncherApps::class.java)
-    val canShowPlatformShortcuts = launcherApps?.hasShortcutHostPermission() == true
-    AppIcon(app, 56.dp, Color.White, onLaunch = close,
-        onLongPress = close,
-        onContextMenu = if (canShowPlatformShortcuts && !editingHome) ({ onAppLongPress(app) }) else null,
-        dragPayload = app.pkg)
-}
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                Box {
+                                    AppIcon(
+                                        app, 56.dp, Color.White, onLaunch = close,
+                                        onLongPress = close,
+                                        dragPayload = app.pkg,
+                                        testTag = "drawer-app-${app.pkg}"
+                                    )
+                                    IconButton(
+                                        onClick = { onAppLongPress(app) },
+                                        modifier = Modifier.align(Alignment.TopEnd).size(28.dp).testTag("drawer-app-menu-${app.pkg}")
+                                    ) { Text("⋮", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
+                                }
+                            }
+                        }
 
 
                     }
@@ -2507,56 +2603,4 @@ private fun OrganizeAppsDialog(
             }
         }
     )
-}
-private fun loadPlayStoreCategory(pkg: String): String? {
-    val connection = java.net.URL(
-        "https://play.google.com/store/apps/details?id=$pkg&hl=es_AR&gl=AR"
-    ).openConnection() as java.net.HttpURLConnection
-
-    connection.connectTimeout = 5000
-    connection.readTimeout = 5000
-    connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-
-    return try {
-        val html = connection.inputStream.bufferedReader().use { it.readText() }
-        val genreStart = html.indexOf("itemprop=\"genre\"")
-
-        if (genreStart < 0) {
-            null
-        } else {
-            val section = html.substring(
-                genreStart,
-                (genreStart + 4000).coerceAtMost(html.length)
-            )
-            val marker = "/store/apps/category/"
-            val markerStart = section.indexOf(marker)
-
-            if (markerStart < 0) {
-                null
-            } else {
-                val code = section
-                    .substring(markerStart + marker.length)
-                    .takeWhile { it.isUpperCase() || it == '_' }
-
-                when (code) {
-                    "SOCIAL" -> "Redes Sociales"
-                    "MUSIC_AND_AUDIO", "VIDEO_PLAYERS", "PHOTOGRAPHY" -> "Multimedia"
-                    "GAME" -> "Juegos"
-                    "MAPS_AND_NAVIGATION" -> "Mapas y viajes"
-                    "FINANCE" -> "Finanzas"
-                    "FOOD_AND_DRINK" -> "Comida"
-                    "SHOPPING" -> "Compras"
-                    "PRODUCTIVITY" -> "Productividad"
-                    "COMMUNICATION" -> "Comunicación"
-                    "NEWS_AND_MAGAZINES", "BOOKS_AND_REFERENCE" -> "Noticias y lectura"
-                    "TOOLS" -> "Herramientas"
-                    else -> null
-                }
-            }
-        }
-    } catch (_: Exception) {
-        null
-    } finally {
-        connection.disconnect()
-    }
 }

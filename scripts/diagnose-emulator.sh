@@ -154,6 +154,10 @@ monitor_test() {
 }
 
 methods=(
+  drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned
+  homeEditShowsLargeDirectActionsAndDoubleTapLockIsDiscoverable
+  doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission
+  widgetPickerShowsVisualPreviewCards
   longPressingHomeAppDoesNotEnterPageEdit
   swipeUpOnHomeOpensTheAppDrawer
   swipeDownAtTopOfDrawerClosesIt

@@ -1,6 +1,7 @@
 package com.nexo.launcher
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertExists
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipeLeft
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.doubleClick
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -25,6 +28,51 @@ import org.junit.Test
 class HomeNavigationTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val target = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+        assertTrue("The emulator must expose at least one launchable app", target != null)
+        val appPackage = target!!.activityInfo.packageName
+        val appLabel = target.loadLabel(composeRule.activity.packageManager).toString()
+        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        composeRule.onNodeWithText("Buscar aplicaciones").performTextInput(appLabel)
+        composeRule.waitForIdle()
+        val result = composeRule.onNodeWithTag("drawer-app-$appPackage").fetchSemanticsNode().boundsInRoot
+        val list = composeRule.onNodeWithTag("app-drawer-list").fetchSemanticsNode().boundsInRoot
+        assertTrue("Filtered app should start at the first (left) grid column: app=$result list=$list", kotlin.math.abs(result.left - list.left) < 3f)
+        composeRule.onAllNodesWithTag("drawer-app-$appPackage").assertCountEquals(1)
+    }
+
+    @Test
+    fun homeEditShowsLargeDirectActionsAndDoubleTapLockIsDiscoverable() {
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("edit-widgets").assertExists()
+        composeRule.onNodeWithTag("edit-wallpaper").assertExists()
+        composeRule.onNodeWithTag("edit-lock-screen").assertExists()
+        composeRule.onNodeWithTag("edit-choose-launcher").assertExists()
+        composeRule.onNodeWithTag("edit-backup").assertExists()
+    }
+
+    @Test
+    fun doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission() {
+        composeRule.onNodeWithTag("home-cell-20", useUnmergedTree = true).performTouchInput { doubleClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Doble toque para bloquear").assertExists()
+    }
+
+    @Test
+    fun widgetPickerShowsVisualPreviewCards() {
+        val provider = android.appwidget.AppWidgetManager.getInstance(composeRule.activity)
+            .installedProviders.firstOrNull()
+        assertTrue("The emulator must have the test widget provider installed", provider != null)
+        composeRule.runOnUiThread { composeRule.activity.launchWidgetPicker(0, 0) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("widget-provider-${provider!!.provider.packageName}").assertExists()
+    }
 
     @Test
     fun longPressingHomeAppDoesNotEnterPageEdit() {

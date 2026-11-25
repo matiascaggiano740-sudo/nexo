@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.app.admin.DevicePolicyManager
+import android.app.role.RoleManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
@@ -108,6 +109,27 @@ class MainActivity : ComponentActivity() {
     fun lockDeviceNow() {
         if (!isLockAdminActive()) return
         runCatching { (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).lockNow() }
+    }
+
+    fun isDefaultHomeRoleHeld(): Boolean = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_HOME) == true
+    } else false
+
+    fun requestDefaultHomeRole() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            val roles = getSystemService(RoleManager::class.java)
+            if (roles?.isRoleAvailable(RoleManager.ROLE_HOME) == true && !roles.isRoleHeld(RoleManager.ROLE_HOME)) {
+                runCatching { startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_HOME), REQUEST_HOME_ROLE) }
+                    .onFailure { openHomeSettings() }
+                return
+            }
+        }
+        openHomeSettings()
+    }
+
+    private fun openHomeSettings() {
+        runCatching { startActivity(Intent(android.provider.Settings.ACTION_HOME_SETTINGS)) }
+            .onFailure { Toast.makeText(this, "No se pudieron abrir las opciones de inicio de Android", Toast.LENGTH_LONG).show() }
     }
 
     fun launchWidgetPicker(page: Int, appCells: Int) {
@@ -405,6 +427,7 @@ class MainActivity : ComponentActivity() {
         private const val HOST_ID = 0x4E45584F
         private const val REQUEST_BIND = 4102
         private const val REQUEST_CONFIGURE = 4103
+        private const val REQUEST_HOME_ROLE = 4104
         private const val STATE_PENDING_WIDGET_ID = "nexo.pendingWidgetId"
         private const val STATE_PENDING_WIDGET_PAGE = "nexo.pendingWidgetPage"
         private const val STATE_PENDING_WIDGET_APP_CELLS = "nexo.pendingWidgetAppCells"
