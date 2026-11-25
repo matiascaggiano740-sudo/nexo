@@ -1,0 +1,85 @@
+name: Package approved NEXO candidate
+
+on:
+  push:
+    branches:
+      - zapia/launcher-refresh
+    paths:
+      - .github/workflows/package-candidate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build Release from approved source commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the exact approved app source
+        uses: actions/checkout@v6
+        with:
+          ref: 8b9037f5bf6601c60e08d7cb5f52fd86b2f0a499
+          path: source
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 8.14.4
+
+      - name: Prepare signing key without exposing it
+        working-directory: source
+        env:
+          NEXO_KEYSTORE_BASE64: ${{ secrets.NEXO_KEYSTORE_BASE64 }}
+        run: printf '%s' "$NEXO_KEYSTORE_BASE64" | base64 --decode > nexo-release-final.p12
+
+      - name: Build Release APK from pinned source
+        working-directory: source
+        env:
+          NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
+
+      - name: Verify identity, signing certificate, and record APK SHA-256
+        working-directory: source
+        env:
+          EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          version_code=$(sed -n 's/^VERSION_CODE=//p' version.properties)
+          version_name=$(sed -n 's/^VERSION_NAME=//p' version.properties)
+          badging=$("$aapt" dump badging "$apk" | sed -n '1p')
+          echo "$badging" | grep -F "package: name='com.nexo.launcher' versionCode='$version_code' versionName='$version_name'"
+          "$apksigner" verify --verbose "$apk"
+          "$apksigner" verify --print-certs "$apk" | tee signing-details.txt
+          signer=$(sed -n 's/.*certificate SHA-256 digest: //p' signing-details.txt | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test "$signer" = "$EXPECTED_CERT_SHA256"
+          mkdir -p ../candidate
+          cp "$apk" ../candidate/app-release.apk
+          {
+            echo "source_commit=8b9037f5bf6601c60e08d7cb5f52fd86b2f0a499"
+            echo "applicationId=com.nexo.launcher"
+            echo "versionCode=$version_code"
+            echo "versionName=$version_name"
+            echo "apk_path=candidate/app-release.apk"
+            echo "apk_sha256=$(sha256sum ../candidate/app-release.apk | awk '{print toupper($1)}')"
+            echo "signing_certificate_sha256=$signer"
+          } | tee ../candidate/metadata.txt
+          cp signing-details.txt ../candidate/signing-details.txt
+          cp <("$aapt" dump badging "$apk") ../candidate/aapt-badging.txt
+
+      - name: Upload the APK and its verifiable identity metadata
+        uses: actions/upload-artifact@v6
+        with:
+          name: NEXO-Release-8b9037f5
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 30
