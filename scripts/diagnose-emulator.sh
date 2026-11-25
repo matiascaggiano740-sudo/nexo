@@ -159,6 +159,8 @@ methods=(
   swipeDownAtTopOfDrawerClosesIt
   emptyPageCanBeDeletedFromItsPreview
   longPressDragMovesAnAppIntoAnEmptyHomeCellAndPersistsIt
+  longPressDragMovesAnAppAcrossPagesAndPersistsSelection
+  longPressDragMovesAnAppFromHomeToDockAndPersistsBothLocations
   populatedPageDeletionRequiresConfirmation
   deletingPageWithWidgetConfirmsAndRemovesItsPlacement
   appDrawerOpensAndClosesFromExplicitControls

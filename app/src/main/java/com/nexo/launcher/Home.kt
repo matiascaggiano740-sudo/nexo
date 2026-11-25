@@ -170,6 +170,8 @@ fun Home() {
         mutableStateOf(savedPages ?: listOf(homePackages))
     }
     val homeCellBounds = remember { mutableStateMapOf<Int, ComposeRect>() }
+    val dockCellBounds = remember { mutableStateMapOf<Int, ComposeRect>() }
+    val pageIndicatorBounds = remember { mutableStateMapOf<Int, ComposeRect>() }
     var currentPage by remember {
         mutableIntStateOf(ctx.getSharedPreferences("nexo_home", 0).getInt("current_page", 0).coerceAtLeast(0))
     }
@@ -216,6 +218,89 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     var photo by remember { mutableStateOf<ImageBitmap?>(null) }
     var photoTick by remember { mutableStateOf(0) }
     var editCard by remember { mutableStateOf(false) }
+
+    fun dropAppOnDock(targetIndex: Int, payload: String) {
+        val fromDock = payload.startsWith("dock:")
+        val pkg = payload.removePrefix("home:").removePrefix("dock:")
+        if (apps.none { it.pkg == pkg } || targetIndex !in 0..3) return
+        val originalTarget = dockPackages.getOrNull(targetIndex) ?: "-"
+        val updated = dockPackages.toMutableList().apply { while (size < 4) add("-") }
+        val sourceDockIndex = updated.indexOf(pkg)
+        if (sourceDockIndex >= 0 && sourceDockIndex != targetIndex) {
+            val displaced = updated[targetIndex]
+            updated[targetIndex] = pkg
+            updated[sourceDockIndex] = displaced
+        } else updated[targetIndex] = pkg
+        dockPackages = updated
+        ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
+        dock = updated.mapNotNull { item -> apps.find { it.pkg == item } }
+        if (!fromDock) {
+            val pages = homePages.map { it.toMutableList() }.toMutableList()
+            val sourcePage = pages.indexOfFirst { pkg in it }
+            if (sourcePage >= 0) {
+                val sourceSlot = pages[sourcePage].indexOf(pkg)
+                pages[sourcePage][sourceSlot] = if (sourceDockIndex < 0 && originalTarget in apps.map { it.pkg }) originalTarget else "-"
+                homePages = pages.map { it.toList() }
+                homePackages = homePages.getOrNull(currentPage).orEmpty()
+                ctx.getSharedPreferences("nexo_home", 0).edit()
+                    .putString("pages", homePages.joinToString("~") { it.joinToString("|") })
+                    .putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
+            }
+        }
+    }
+
+    fun dropAppOnHomePage(targetPage: Int, payload: String) {
+        val fromDock = payload.startsWith("dock:")
+        val token = payload.removePrefix("home:").removePrefix("dock:")
+        val isFolder = token.startsWith("folder:") && userFolders.any { it.first == token.removePrefix("folder:") }
+        if ((!isFolder && apps.none { it.pkg == token }) || targetPage !in homePages.indices) return
+        val pages = homePages.map { it.toMutableList() }.toMutableList()
+        if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
+        val sourcePage = pages.indexOfFirst { token in it }
+        val destination = pages[targetPage]
+        if (token in destination) {
+            if (sourcePage >= 0 && sourcePage != targetPage) {
+                val duplicateIndex = pages[sourcePage].indexOf(token)
+                if (duplicateIndex >= 0) pages[sourcePage][duplicateIndex] = "-"
+                val saved = pages.map { it.toList() }
+                ctx.getSharedPreferences("nexo_home", 0).edit()
+                    .putString("packages", saved.firstOrNull().orEmpty().joinToString("|"))
+                    .putString("pages", saved.joinToString("~") { it.joinToString("|") }).apply()
+                homePages = saved
+            }
+            selectHomePage(targetPage)
+            return
+        }
+        val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == targetPage }
+            ?.sumOf { id -> widgetRowsForHeight(launcherActivity.widgetHeightDp(id), launcherActivity.homeCellHeightDp.floatValue) * 4 } ?: 0
+        val appStart = (8 + widgetCells).coerceAtMost(28)
+        val appEnd = (28 - if (targetPage == 0) 8 else 0).coerceAtLeast(appStart)
+        while (destination.size < 28) destination.add("-")
+        val free = (appStart until appEnd).firstOrNull { destination.getOrNull(it) == "-" }
+        if (free == null) {
+            Toast.makeText(ctx, "No hay una celda libre en esa página", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (sourcePage >= 0 && sourcePage != targetPage) {
+            val sourceIndex = pages[sourcePage].indexOf(token)
+            if (sourceIndex >= 0) pages[sourcePage][sourceIndex] = "-"
+        }
+        destination[free] = token
+        val saved = pages.map { it.toList() }
+        val currentPrefs = ctx.getSharedPreferences("nexo_home", 0).edit()
+            .putString("packages", saved.firstOrNull().orEmpty().joinToString("|"))
+            .putString("pages", saved.joinToString("~") { it.joinToString("|") })
+            .putInt("current_page", targetPage).commit()
+        if (!currentPrefs) return
+        homePages = saved
+        currentPage = targetPage
+        homePackages = saved[targetPage]
+        if (fromDock) {
+            dockPackages = dockPackages.map { if (it == token) "-" else it }
+            dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+            ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|")).apply()
+        }
+    }
 
     fun addAppToCurrentHome(app: AppItem) {
         val pages = homePages.map { it.toMutableList() }.toMutableList()
@@ -654,7 +739,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             homePackages = slots
                         },
                         cellBounds = homeCellBounds,
+                        dockCellBounds = dockCellBounds,
+                        pageIndicatorBounds = pageIndicatorBounds,
                         onCellBoundsChanged = { cellIndex, bounds -> homeCellBounds[cellIndex] = bounds },
+                        onDockDrop = { payload, targetIndex -> dropAppOnDock(targetIndex, payload) },
+                        onPageDrop = { payload, targetIndex -> dropAppOnHomePage(targetIndex, payload) },
                         onDrop = { payload, targetIndex ->
                             val fromDock = payload.startsWith("dock:")
                             val draggedPkg = payload.removePrefix("home:").removePrefix("dock:")
@@ -804,54 +893,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     homePages.indices.forEach { page ->
-                        HomePageIndicator(page = page, selected = currentPage == page,
+                        HomePageIndicator(
+                            page = page,
+                            selected = currentPage == page,
                             onSelect = { selectHomePage(page) },
-                            onDrop = { payload ->
-                                val fromDock = payload.startsWith("dock:")
-                                val token = payload.removePrefix("home:").removePrefix("dock:")
-                                val isFolder = token.startsWith("folder:") && userFolders.any { it.first == token.removePrefix("folder:") }
-                                val valid = isFolder || apps.any { it.pkg == token }
-                                if (valid && page in homePages.indices) {
-                                    val pages = homePages.map { it.toMutableList() }.toMutableList()
-                                    if (pages.isNotEmpty() && pages[0].isEmpty()) pages[0].addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
-                                    val sourcePage = pages.indexOfFirst { token in it }
-                                    val dest = pages[page]
-                                    val widgetCells = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == page }
-                                        ?.sumOf { id -> widgetRowsForHeight(launcherActivity.widgetHeightDp(id), launcherActivity.homeCellHeightDp.floatValue) * 4 } ?: 0
-                                    val appStart = (8 + widgetCells).coerceAtMost(28)
-                                    val appEnd = (28 - if (page == 0) 8 else 0).coerceAtLeast(appStart)
-                                    if (token in dest) {
-                                        if (sourcePage >= 0 && sourcePage != page) {
-                                            val duplicateIndex = pages[sourcePage].indexOf(token)
-                                            if (duplicateIndex >= 0) pages[sourcePage][duplicateIndex] = "-"
-                                            val saved = pages.map { it.toList() }
-                                            ctx.getSharedPreferences("nexo_home", 0).edit()
-                                                .putString("packages", saved.firstOrNull().orEmpty().joinToString("|"))
-                                                .putString("pages", saved.joinToString("~") { it.joinToString("|") }).apply()
-                                            homePages = saved
-                                        }
-                                        currentPage = page; homePackages = pages[page].toList()
-                                    } else {
-                                        while (dest.size < 28) dest.add("-")
-                                        val free = (appStart until appEnd).firstOrNull { dest.getOrNull(it) == "-" }
-                                        if (free == null) Toast.makeText(ctx, "No hay una celda libre en esa página", Toast.LENGTH_SHORT).show()
-                                        else {
-                                            if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(token)] = "-"
-                                            dest[free] = token
-                                            val saved = pages.map { it.toList() }
-                                            ctx.getSharedPreferences("nexo_home", 0).edit()
-                                                .putString("packages", saved.firstOrNull().orEmpty().joinToString("|"))
-                                                .putString("pages", saved.joinToString("~") { it.joinToString("|") }).apply()
-                                            homePages = saved; currentPage = page; homePackages = dest.toList()
-                                            if (fromDock) {
-                                                dockPackages = dockPackages.map { if (it == token) "-" else it }
-                                                dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-                                                ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|")).apply()
-                                            }
-                                        }
-                                    }
-                                }
-                            })
+                            onDrop = { payload -> dropAppOnHomePage(page, payload) },
+                            onBoundsChanged = { target, bounds -> pageIndicatorBounds[target] = bounds }
+                        )
                     }
                 }
             }
@@ -882,43 +930,20 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     verticalAlignment = Alignment.CenterVertically) {
                     repeat(4) { dockIndex ->
                         val dockApp = dockPackages.getOrNull(dockIndex)?.let { pkg -> apps.find { it.pkg == pkg } }
-                        DockCell(modifier = Modifier.weight(1f).fillMaxHeight(), app = dockApp, index = dockIndex, editing = editingHome,
+                        DockCell(
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            app = dockApp,
+                            index = dockIndex,
+                            editing = editingHome,
+                            onBoundsChanged = { target, bounds -> dockCellBounds[target] = bounds },
                             onRemove = {
                                 val updated = dockPackages.toMutableList().apply { while (size < 4) add("-"); this[dockIndex] = "-" }
                                 dockPackages = updated
                                 ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
                                 dock = updated.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
                             },
-                            onDrop = { payload ->
-                                val fromDock = payload.startsWith("dock:")
-                                val pkg = payload.removePrefix("home:").removePrefix("dock:")
-                                if (apps.any { it.pkg == pkg }) {
-                                    val originalTarget = dockPackages.getOrNull(dockIndex) ?: "-"
-                                    val updated = dockPackages.toMutableList().apply { while (size < 4) add("-") }
-                                    val sourceDockIndex = updated.indexOf(pkg)
-                                    if (sourceDockIndex >= 0 && sourceDockIndex != dockIndex) {
-                                        val displaced = updated[dockIndex]
-                                        updated[dockIndex] = pkg
-                                        updated[sourceDockIndex] = displaced
-                                    } else updated[dockIndex] = pkg
-                                    dockPackages = updated
-                                    ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", updated.joinToString("|")).apply()
-                                    dock = updated.mapNotNull { item -> apps.find { it.pkg == item } }
-                                    if (!fromDock) {
-                                        val pages = homePages.map { it.toMutableList() }.toMutableList()
-                                        val sourcePage = pages.indexOfFirst { pkg in it }
-                                        if (sourcePage >= 0) {
-                                            val sourceSlot = pages[sourcePage].indexOf(pkg)
-                                            pages[sourcePage][sourceSlot] = if (sourceDockIndex < 0 && originalTarget in apps.map { it.pkg }) originalTarget else "-"
-                                            homePages = pages.map { it.toList() }
-                                            homePackages = homePages.getOrNull(currentPage).orEmpty()
-                                            ctx.getSharedPreferences("nexo_home", 0).edit()
-                                                .putString("pages", homePages.joinToString("~") { it.joinToString("|") })
-                                                .putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
-                                        }
-                                    }
-                                }
-                            })
+                            onDrop = { payload -> dropAppOnDock(dockIndex, payload) }
+                        )
                     }
                 }
             }
@@ -1897,7 +1922,13 @@ private fun HomeEditAction(label: String, onClick: () -> Unit, testTag: String? 
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit, onDrop: (String) -> Unit) {
+private fun HomePageIndicator(
+    page: Int,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onDrop: (String) -> Unit,
+    onBoundsChanged: (Int, ComposeRect) -> Unit
+) {
     val target = remember(page, onDrop) {
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
@@ -1910,6 +1941,7 @@ private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit
         }
     }
     Box(Modifier.size(40.dp)
+        .onGloballyPositioned { coordinates -> onBoundsChanged(page, coordinates.boundsInRoot()) }
         .testTag(if (selected) "home-page-indicator-selected-$page" else "home-page-indicator-$page")
         .semantics { contentDescription = if (selected) "Ir a la página ${page + 1}, seleccionada" else "Ir a la página ${page + 1}" }
         .clickable(onClick = onSelect)
@@ -1925,6 +1957,7 @@ private fun HomePageIndicator(page: Int, selected: Boolean, onSelect: () -> Unit
 @Composable
 private fun DockCell(
     modifier: Modifier, app: AppItem?, index: Int, editing: Boolean,
+    onBoundsChanged: (Int, ComposeRect) -> Unit,
     onRemove: () -> Unit, onDrop: (String) -> Unit
 ) {
     val target = remember(index, onDrop) {
@@ -1938,7 +1971,7 @@ private fun DockCell(
             }
         }
     }
-    Box(modifier.dragAndDropTarget(
+    Box(modifier.onGloballyPositioned { coordinates -> onBoundsChanged(index, coordinates.boundsInRoot()) }.testTag("dock-cell-$index").dragAndDropTarget(
         shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
             ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
     ), contentAlignment = Alignment.Center) {
@@ -1967,7 +2000,11 @@ private fun HomeAppCell(
     onAppClick: () -> Unit = {},
     onDoubleTapEmpty: () -> Unit = {},
     cellBounds: Map<Int, ComposeRect>,
+    dockCellBounds: Map<Int, ComposeRect>,
+    pageIndicatorBounds: Map<Int, ComposeRect>,
     onCellBoundsChanged: (Int, ComposeRect) -> Unit,
+    onDockDrop: (String, Int) -> Unit,
+    onPageDrop: (String, Int) -> Unit,
     onRemove: (String) -> Unit,
     onDrop: (String, Int) -> Unit
 ) {
@@ -2004,8 +2041,12 @@ private fun HomeAppCell(
                             change.consume()
                             rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
                         }
-                        val destination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
-                        if (destination != null) onDrop(dragPayload, destination)
+                        val homeDestination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
+                        val dockDestination = dockCellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
+                        val pageDestination = pageIndicatorBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
+                        if (homeDestination != null) onDrop(dragPayload, homeDestination)
+                        else if (dockDestination != null && app != null) onDockDrop(dragPayload, dockDestination)
+                        else if (pageDestination != null) onPageDrop(dragPayload, pageDestination)
                     } else {
                         val end = currentEvent.changes.firstOrNull { it.id == down.id } ?: down
                         val elapsed = end.uptimeMillis - down.uptimeMillis

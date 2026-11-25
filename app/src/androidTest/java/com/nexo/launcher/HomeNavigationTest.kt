@@ -128,6 +128,88 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun longPressDragMovesAnAppAcrossPagesAndPersistsSelection() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val appPackage = composeRule.activity.packageManager
+            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+            ?.activityInfo?.packageName
+        assertTrue("The emulator must provide a launchable app for page drag test", appPackage != null)
+        val firstPage = MutableList(28) { "-" }.apply { this[8] = appPackage!! }
+        val secondPage = MutableList(28) { "-" }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", listOf(firstPage, secondPage).joinToString("~") { it.joinToString("|") })
+            .putString("packages", firstPage.joinToString("|"))
+            .putInt("current_page", 0)
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        val source = composeRule.onNodeWithTag("home-page-app").fetchSemanticsNode().boundsInRoot
+        val targetNode = composeRule.onNodeWithTag("home-page-indicator-1", useUnmergedTree = true)
+        val target = targetNode.fetchSemanticsNode().boundsInRoot.center
+        targetNode.assertExists()
+        composeRule.onNodeWithTag("home-page-app").performTouchInput {
+            val origin = source.center - source.topLeft
+            val destination = target - source.topLeft
+            down(origin)
+            advanceEventTime(700)
+            for (step in 1..12) {
+                val fraction = step / 12f
+                moveTo(origin + (destination - origin) * fraction, 35)
+            }
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            val saved = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~")
+            saved.getOrNull(1)?.contains(appPackage!!) == true && composeRule.activity.getSharedPreferences("nexo_home", 0).getInt("current_page", -1) == 1
+        }
+        val pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~")
+        assertTrue("Moved app must no longer be on page 1", appPackage !in pages[0])
+        assertTrue("Moved app must be on page 2", appPackage in pages[1])
+    }
+
+    @Test
+    fun longPressDragMovesAnAppFromHomeToDockAndPersistsBothLocations() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val appPackage = composeRule.activity.packageManager
+            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+            ?.activityInfo?.packageName
+        assertTrue("The emulator must provide a launchable app for dock drag test", appPackage != null)
+        val page = MutableList(28) { "-" }.apply { this[8] = appPackage!! }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putString("dock_packages", "-|-|-|-")
+            .putInt("current_page", 0)
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        val source = composeRule.onNodeWithTag("home-page-app").fetchSemanticsNode().boundsInRoot
+        val targetNode = composeRule.onNodeWithTag("dock-cell-0", useUnmergedTree = true)
+        val target = targetNode.fetchSemanticsNode().boundsInRoot.center
+        targetNode.assertExists()
+        composeRule.onNodeWithTag("home-page-app").performTouchInput {
+            val origin = source.center - source.topLeft
+            val destination = target - source.topLeft
+            down(origin)
+            advanceEventTime(700)
+            for (step in 1..12) {
+                val fraction = step / 12f
+                moveTo(origin + (destination - origin) * fraction, 35)
+            }
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("dock_packages", "")
+                ?.split("|")?.getOrNull(0) == appPackage
+        }
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        assertEquals("Dragged app must occupy dock slot 1", appPackage, prefs.getString("dock_packages", "")?.split("|")?.getOrNull(0))
+        assertEquals("Moving an app to the dock must clear its home cell", "-", prefs.getString("pages", "")?.split("|")?.getOrNull(8))
+    }
+
+    @Test
     fun populatedPageDeletionRequiresConfirmation() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val launchablePackages = composeRule.activity.packageManager
