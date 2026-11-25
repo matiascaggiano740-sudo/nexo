@@ -86,11 +86,16 @@ echo 'Android PackageInstaller installed versionCode=1000.' | tee -a "$ARTIFACTS
 adb shell dumpsys activity activities > "$ARTIFACTS/installer-activity-after-install.txt" || true
 # Run a fresh instrumented process against the updated app after Android killed the old activity.
 set +e
-post="$(adb shell am instrument -w -e class 'com.nexo.launcher.OtaPostInstallVerificationTest#installedCandidateHasVersionAndUserPreferencesSurvived' com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
-post_status=$?
+timeout 120s adb shell am instrument -w -e class 'com.nexo.launcher.OtaPostInstallVerificationTest#installedCandidateHasVersionAndUserPreferencesSurvived' com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee "$ARTIFACTS/post-install-instrumentation.txt"
+post_status=${PIPESTATUS[0]}
 set -e
-printf '%s\n' "$post" | tee "$ARTIFACTS/post-install-instrumentation.txt"
-test "$post_status" -eq 0
-echo "$post" | grep -Fq 'OK (1 test)'
+if (( post_status != 0 )); then
+  echo "Post-install instrumentation failed or timed out (exit=$post_status). Capturing device and package state." | tee "$ARTIFACTS/post-install-failure.txt"
+  adb shell dumpsys package com.nexo.launcher > "$ARTIFACTS/post-install-package-dump.txt" 2>&1 || true
+  adb shell dumpsys activity activities > "$ARTIFACTS/post-install-activities.txt" 2>&1 || true
+  adb logcat -d -v threadtime > "$ARTIFACTS/post-install-logcat.txt" 2>&1 || true
+  exit "$post_status"
+fi
+grep -Fq 'OK (1 test)' "$ARTIFACTS/post-install-instrumentation.txt" || { echo 'Post-install instrumentation did not report one passing test.' >&2; exit 1; }
 adb logcat -d -s NexoOtaE2E:I > "$ARTIFACTS/ota-flow-logcat-final.txt" 2>&1
 echo 'OTA E2E PASS: manifest error surfaced; bad hash rejected; verified APK handed to Android installer; signed update installed; preferences preserved.' | tee "$ARTIFACTS/ota-e2e-result.txt"
