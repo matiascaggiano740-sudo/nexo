@@ -16,7 +16,12 @@ new_cert="$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certifica
 test "$old_cert" = "$EXPECTED_CERT_SHA256" || { echo 'Historical APK certificate mismatch.' >&2; exit 1; }
 test "$new_cert" = "$EXPECTED_CERT_SHA256" || { echo 'Candidate APK certificate mismatch.' >&2; exit 1; }
 adb install "$old_apk"
-adb install "$workspace/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+test_apk="$workspace/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+signed_test_apk="$workspace/app/build/outputs/apk/androidTest/debug/app-release-signed-androidTest.apk"
+"$apksigner" sign --ks "$workspace/nexo-release-final.p12" --ks-type PKCS12 --ks-pass env:NEXO_STORE_PASSWORD --key-pass env:NEXO_KEY_PASSWORD --ks-key-alias nexo --out "$signed_test_apk" "$test_apk"
+test_cert="$("$apksigner" verify --print-certs "$signed_test_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+test "$test_cert" = "$EXPECTED_CERT_SHA256" || { echo 'Instrumentation APK certificate does not match Release.' >&2; exit 1; }
+adb install "$signed_test_apk"
 set +e
 seed_result="$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
 seed_status=$?

@@ -229,6 +229,8 @@ jobs:
           script: bash scripts/test-signed-upgrade.sh
         env:
           EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
+          NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v6
         if: always()
