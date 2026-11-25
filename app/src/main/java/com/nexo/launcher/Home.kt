@@ -1,11 +1,8 @@
 package com.nexo.launcher
 
 import android.content.Intent
-import android.content.pm.LauncherApps
 import android.appwidget.AppWidgetProviderInfo
 import android.appwidget.AppWidgetManager
-import android.content.pm.ShortcutInfo
-import android.os.Process
 import android.graphics.Rect
 import android.graphics.Point
 import android.graphics.Paint
@@ -201,12 +198,9 @@ fun Home() {
     LaunchedEffect(Unit) {
         if (ctx.getSharedPreferences("nexo_updates", 0).getLong("pending_version", -1L) > 0L) showUpdateDialog = true
     }
-    var showLockAdminDialog by remember { mutableStateOf(false) }
+    var showLockAccessibilityDialog by remember { mutableStateOf(false) }
     var showIconThemeDialog by remember { mutableStateOf(false) }
     var iconTheme by remember { mutableStateOf(savedIconTheme(ctx)) }
-    var shortcutTarget by remember { mutableStateOf<AppItem?>(null) }
-    var shortcutRows by remember { mutableStateOf<List<ShortcutInfo>>(emptyList()) }
-    var shortcutAccessDenied by remember { mutableStateOf(false) }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
@@ -389,28 +383,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             (index == 0 && homePages[index].isEmpty() && defaultHomeApps.isNotEmpty())
         val hasWidgets = launcherActivity?.hostedWidgetPages?.values?.any { it == index } == true
         if (hasApps || hasWidgets) pagePendingDelete = index else deleteHomePage(index)
-    }
-
-    fun showShortcutsFor(app: AppItem) {
-        val launcherApps = ctx.getSystemService(LauncherApps::class.java)
-        if (launcherApps == null || !launcherApps.hasShortcutHostPermission()) {
-            shortcutTarget = app
-            shortcutRows = emptyList()
-            shortcutAccessDenied = true
-            return
-        }
-        val shortcuts = runCatching {
-            val query = LauncherApps.ShortcutQuery().setPackage(app.pkg).setQueryFlags(
-                LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or
-                    LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or
-                    LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED
-            )
-            launcherApps.getShortcuts(query, Process.myUserHandle()).orEmpty()
-                .sortedWith(compareBy<ShortcutInfo> { if (it.isDynamic) 1 else 0 }.thenBy { it.rank })
-        }.getOrDefault(emptyList())
-        shortcutTarget = app
-        shortcutRows = shortcuts
-        shortcutAccessDenied = false
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -735,8 +707,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onLongPress = { editingHome = true },
                         onAppClick = { app?.let { runCatching { ctx.startActivity(it.intent) } } },
                         onDoubleTapEmpty = {
-                            if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
-                            else showLockAdminDialog = true
+                            if (launcherActivity?.isLockAccessibilityEnabled() == true) {
+                                if (launcherActivity.lockDeviceNow()) Unit
+                                else Toast.makeText(ctx, "El servicio de bloqueo no está disponible. Revisá Accesibilidad de NEXO.", Toast.LENGTH_LONG).show()
+                            } else showLockAccessibilityDialog = true
                         },
                         onRemove = { pkg ->
                             val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
@@ -972,7 +946,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }
         if (drawer) {
             Box(Modifier.fillMaxSize().zIndex(10f)) {
-                Drawer(apps, editingHome, onAppLongPress = { app -> showShortcutsFor(app) }) { drawer = false }
+                Drawer(apps) { drawer = false }
             }
         }
         openFolder?.let { name ->
@@ -1022,12 +996,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     selectHomePage(newPage)
                 },
                 onFolder = { showNewFolder = true },
-                onIcons = { editingHome = false; showIconThemeDialog = true },
                 onManage = { editingHome = false; showPageManager = true },
-                onSettings = { editingHome = false; showSettingsDialog = true },
-                onBackup = { editingHome = false; showBackupDialog = true },
-                onLockScreen = { showLockAdminDialog = true },
-                onChooseLauncher = { launcherActivity?.requestDefaultHomeRole() }
+                onSettings = { editingHome = false; showSettingsDialog = true }
             )
         }
         dragPreview?.let { (item, position) ->
@@ -1089,49 +1059,24 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         } },
         confirmButton = { TextButton(onClick = { showIconThemeDialog = false }) { Text("Cerrar") } }
     )
-    if (shortcutTarget != null && !shortcutAccessDenied) AlertDialog(
-        onDismissRequest = { shortcutTarget = null; shortcutRows = emptyList() },
-        title = { Text("${shortcutTarget?.label} · accesos directos") },
-        text = { Column {
-            if (shortcutRows.isEmpty()) Text("Esta aplicación no ofrece accesos directos ahora.")
-            else shortcutRows.forEach { shortcut ->
-                TextButton(onClick = {
-                    val app = shortcutTarget ?: return@TextButton
-                    runCatching { ctx.getSystemService(LauncherApps::class.java)?.startShortcut(app.pkg, shortcut.id, null, null, Process.myUserHandle()) }
-                        .onFailure { Toast.makeText(ctx, "Ese acceso directo ya no está disponible", Toast.LENGTH_SHORT).show() }
-                    shortcutTarget = null
-                    shortcutRows = emptyList()
-                    drawer = false
-                }, modifier = Modifier.fillMaxWidth()) { Text((shortcut.shortLabel ?: shortcut.longLabel ?: shortcut.id).toString(), maxLines = 2, overflow = TextOverflow.Ellipsis) }
-            }
-        } },
-        confirmButton = { TextButton(onClick = { shortcutTarget?.let(::addAppToCurrentHome); shortcutTarget = null; shortcutRows = emptyList() }) { Text("Agregar al inicio") } },
-        dismissButton = { TextButton(onClick = { shortcutTarget = null; shortcutRows = emptyList() }) { Text("Cerrar") } }
-    )
-    if (shortcutTarget != null && shortcutAccessDenied) AlertDialog(
-        onDismissRequest = { shortcutTarget = null; shortcutAccessDenied = false },
-        title = { Text("Accesos directos de ${shortcutTarget?.label}") },
-        text = { Text("Android solo permite que el launcher predeterminado lea estos accesos directos. NEXO todavía se está usando como aplicación normal, así que este acceso aparece cuando lo establezcas como inicio predeterminado.") },
-        confirmButton = { TextButton(onClick = {
-            shortcutTarget = null
-            shortcutAccessDenied = false
-            launcherActivity?.requestDefaultHomeRole()
-        }) { Text("Elegir launcher") } },
-        dismissButton = { TextButton(onClick = { shortcutTarget = null; shortcutAccessDenied = false }) { Text("Cerrar") } }
-    )
-    if (showLockAdminDialog) AlertDialog(
-        onDismissRequest = { showLockAdminDialog = false },
+    if (showLockAccessibilityDialog) AlertDialog(
+        onDismissRequest = { showLockAccessibilityDialog = false },
         title = { Text("Doble toque para bloquear") },
-        text = { Text("Android requiere activar NEXO como administrador del dispositivo para bloquear la pantalla. El permiso se usa solo para esta acción; el bloqueo exigirá tu método de desbloqueo habitual. Podés cancelar ahora y activarlo después.") },
+        text = { Text("Para que el teléfono use su bloqueo normal, como al pulsar el botón de encendido, Android requiere activar el Servicio de accesibilidad de NEXO. NEXO no lee el contenido de la pantalla; el servicio solo pide bloquear. Si activaste el permiso de administrador de la versión anterior, NEXO lo quita porque ya no se necesita. Podés desactivar Accesibilidad cuando quieras.") },
         confirmButton = { TextButton(onClick = {
-            showLockAdminDialog = false
-            runCatching { launcherActivity?.requestLockAdminActivation() }
-                .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de administrador", Toast.LENGTH_LONG).show() }
-        }) { Text("Revisar permiso") } },
-        dismissButton = { TextButton(onClick = { showLockAdminDialog = false }) { Text("Ahora no") } }
+            showLockAccessibilityDialog = false
+            runCatching { launcherActivity?.openLockAccessibilitySettings() }
+                .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de Accesibilidad", Toast.LENGTH_LONG).show() }
+        }) { Text("Abrir Accesibilidad") } },
+        dismissButton = { TextButton(onClick = { showLockAccessibilityDialog = false }) { Text("Ahora no") } }
     )
+
     if (showSettingsDialog) NexoSettingsDialog(
         onDismiss = { showSettingsDialog = false },
+        onDefaultHome = { launcherActivity?.requestDefaultHomeRole() },
+        onIcons = { showSettingsDialog = false; showIconThemeDialog = true },
+        onLock = { showSettingsDialog = false; showLockAccessibilityDialog = true },
+        onBackup = { showSettingsDialog = false; showBackupDialog = true },
         onUpdates = { showSettingsDialog = false; showUpdateDialog = true }
     )
     if (showUpdateDialog) UpdateDialog(onDismiss = { showUpdateDialog = false })
@@ -1690,12 +1635,8 @@ private fun HomeEditOverview(
     onWallpaper: () -> Unit,
     onAddPage: () -> Unit,
     onFolder: () -> Unit,
-    onIcons: () -> Unit,
     onManage: () -> Unit,
-    onSettings: () -> Unit,
-    onBackup: () -> Unit,
-    onLockScreen: () -> Unit,
-    onChooseLauncher: () -> Unit
+    onSettings: () -> Unit
 ) {
     Column(
         Modifier.fillMaxSize()
@@ -1706,14 +1647,11 @@ private fun HomeEditOverview(
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Personalizar inicio", color = Cream, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                Text("Deslizá entre páginas y elegí una para editar", color = Cream.copy(alpha = 0.68f), fontSize = 12.sp)
-            }
-            TextButton(onClick = onSettings, modifier = Modifier.testTag("open-nexo-settings"), shape = RoundedCornerShape(22.dp)) {
-                Text("Ajustes", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("Editar inicio", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                Text("Elegí, agregá o quitá pantallas", color = Cream.copy(alpha = 0.72f), fontSize = 13.sp)
             }
             TextButton(onClick = onClose, modifier = Modifier.testTag("finish-home-edit"), shape = RoundedCornerShape(22.dp)) {
-                Text("Listo", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("Listo", color = Color(0xFFD6AE70), fontWeight = FontWeight.SemiBold)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -1738,31 +1676,28 @@ private fun HomeEditOverview(
                     canDelete = pages.size > 1,
                     onDeletePage = { onDeletePage(index) },
                     onClick = { onSelectPage(index) },
-                    modifier = Modifier.fillMaxHeight(0.94f).width(238.dp)
+                    modifier = Modifier.fillMaxHeight(0.94f).width(205.dp)
                 )
             }
         }
         Text(
-            "Tocá una miniatura para cambiar de página. Mantené apretado un espacio vacío para volver a esta vista.",
+            "Tocá una miniatura para elegirla. Usá × para quitar una página y Listo para volver.",
             color = Cream.copy(alpha = 0.68f), fontSize = 11.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
             textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
         )
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 HomeEditActionCard("Widgets", "Elegir con vista previa", Modifier.weight(1f), onWidget, testTag = "edit-widgets")
                 HomeEditActionCard("Fondo", "Cambiar imagen", Modifier.weight(1f), onWallpaper, testTag = "edit-wallpaper")
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 HomeEditActionCard("+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage, testTag = "add-home-page")
+                HomeEditActionCard("+ Carpeta", "Agrupar aplicaciones", Modifier.weight(1f), onFolder, testTag = "edit-folder")
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomeEditActionCard("+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder, testTag = "edit-folder")
-                HomeEditActionCard("Iconos", "Elegir estilo", Modifier.weight(1f), onIcons, testTag = "icon-theme-open")
-                HomeEditActionCard("Páginas", "Ordenar o borrar", Modifier.weight(1f), onManage, testTag = "edit-pages")
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomeEditActionCard("Doble toque", "Apagar pantalla", Modifier.weight(1f), onLockScreen, testTag = "edit-lock-screen")
-                HomeEditActionCard("Launcher", "Elegir predeterminado", Modifier.weight(1f), onChooseLauncher, testTag = "edit-choose-launcher")
-                HomeEditActionCard("Respaldo", "Guardar o restaurar", Modifier.weight(1f), onBackup, testTag = "edit-backup")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HomeEditActionCard("Páginas", "Administrar o quitar", Modifier.weight(1f), onManage, testTag = "edit-pages")
+                HomeEditActionCard("Ajustes", "Gestos y apariencia", Modifier.weight(1f), onSettings, testTag = "edit-settings")
             }
         }
     }
@@ -1925,10 +1860,10 @@ private fun HomeEditActionCard(
     testTag: String? = null
 ) {
     Surface(
-        color = Color.White.copy(alpha = 0.095f),
-        shape = RoundedCornerShape(17.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.11f)),
-        modifier = modifier.height(if (compact) 56.dp else 68.dp)
+        color = Color(0xFF29241E),
+        shape = RoundedCornerShape(21.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6AE70).copy(alpha = 0.18f)),
+        modifier = modifier.height(if (compact) 64.dp else 78.dp)
             .then(if (testTag == null) Modifier else Modifier.testTag(testTag)).clickable(onClick = onClick)
     ) {
         Column(
@@ -1936,8 +1871,8 @@ private fun HomeEditActionCard(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = Cream.copy(alpha = 0.68f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Text(title, color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = Color(0xFFD6AE70), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
     }
 }
@@ -2262,13 +2197,10 @@ private fun appCategory(app: AppItem): String {
 
 @Composable
 private fun DrawerCategoryTitle(title: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF24D69B)))
-        Surface(color = Color(0xFF171411), shape = RoundedCornerShape(18.dp), modifier = Modifier.padding(horizontal = 10.dp)) {
-            Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp))
-        }
-        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF24D69B)))
+    Column(Modifier.fillMaxWidth().padding(top = 17.dp, bottom = 7.dp)) {
+        Text(title, color = Cream, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.10f)))
     }
 }
 @Composable
@@ -2365,7 +2297,7 @@ private fun WidgetProviderPreviewCard(provider: AppWidgetProviderInfo, onClick: 
 }
 
 @Composable
-fun Drawer(apps: List<AppItem>, editingHome: Boolean, onAppLongPress: (AppItem) -> Unit = {}, close: () -> Unit) {
+fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
     val drawerListState = rememberLazyListState()
     var showOrganizer by remember { mutableStateOf(false) }
@@ -2429,50 +2361,35 @@ var manualCategories by remember {
                 )
             }
     ) {
-    var menuExpanded by remember { mutableStateOf(false) }
 
-    Spacer(Modifier.height(10.dp))
-
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        TextButton(onClick = close, modifier = Modifier.testTag("close-app-drawer"), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
-            Text("Cerrar", color = Color.White, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Aplicaciones", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text("${apps.size} disponibles", color = Cream.copy(alpha = 0.64f), fontSize = 12.sp)
         }
-        Spacer(Modifier.width(6.dp))
+        TextButton(onClick = close, modifier = Modifier.testTag("close-app-drawer"), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
+            Text("Cerrar", color = Color(0xFFD6AE70), fontWeight = FontWeight.SemiBold)
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             q,
             { q = it },
             singleLine = true,
             placeholder = { Text("Buscar aplicaciones") },
-            shape = RoundedCornerShape(26.dp),
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions.Default
         )
-
-        Box {
-            IconButton(onClick = { menuExpanded = true }) {
-                Text("⋮", color = Color.White, fontSize = 26.sp)
-            }
-
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Organizar aplicaciones") },
-                    onClick = {
-    menuExpanded = false
-    showOrganizer = true
-}
-
-                )
-            }
-        }
+        TextButton(
+            onClick = { showOrganizer = true },
+            modifier = Modifier.testTag("drawer-organize-apps"),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+        ) { Text("Organizar", color = Color(0xFFD6AE70), fontWeight = FontWeight.SemiBold) }
     }
-
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(5.dp))
         LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.testTag("app-drawer-list")) {
             if (q.isNotBlank() && categories.isEmpty()) {
                 item(key = "empty-search") {
@@ -2485,18 +2402,12 @@ var manualCategories by remember {
                     Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.Start) {
                         row.forEach { app ->
                             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                                Box {
-                                    AppIcon(
-                                        app, 56.dp, Color.White, onLaunch = close,
-                                        onLongPress = close,
-                                        dragPayload = app.pkg,
-                                        testTag = "drawer-app-${app.pkg}"
-                                    )
-                                    IconButton(
-                                        onClick = { onAppLongPress(app) },
-                                        modifier = Modifier.align(Alignment.TopEnd).size(28.dp).testTag("drawer-app-menu-${app.pkg}")
-                                    ) { Text("⋮", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
-                                }
+                                AppIcon(
+                                    app, 56.dp, Color.White, onLaunch = close,
+                                    onLongPress = close,
+                                    dragPayload = app.pkg,
+                                    testTag = "drawer-app-${app.pkg}"
+                                )
                             }
                         }
 

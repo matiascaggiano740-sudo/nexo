@@ -4,10 +4,11 @@ import android.app.Activity
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
-import android.appwidget.AppWidgetProviderInfo
 import android.app.admin.DevicePolicyManager
+import android.appwidget.AppWidgetProviderInfo
 import android.app.role.RoleManager
 import android.content.ComponentName
+import android.provider.Settings
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -94,22 +95,23 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
-    private fun lockAdminComponent() = ComponentName(this, NexoDeviceAdminReceiver::class.java)
-
-    fun isLockAdminActive(): Boolean =
-        (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).isAdminActive(lockAdminComponent())
-
-    fun requestLockAdminActivation() {
-        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-            .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, lockAdminComponent())
-            .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "NEXO solicita permiso de administrador solo para bloquear la pantalla cuando uses el doble toque. Podés cancelarlo o revocarlo desde Ajustes.")
-        startActivity(intent)
+    fun isLockAccessibilityEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        val target = ComponentName(this, NexoLockAccessibilityService::class.java).flattenToString()
+        return enabled.split(':').any { it.equals(target, ignoreCase = true) }
     }
 
-    fun lockDeviceNow() {
-        if (!isLockAdminActive()) return
-        runCatching { (getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager).lockNow() }
+    fun openLockAccessibilitySettings() {
+        // Retire the legacy Device Admin permission after the user chooses the replacement path.
+        runCatching {
+            val legacy = ComponentName(this, NexoDeviceAdminReceiver::class.java)
+            val policy = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            if (policy.isAdminActive(legacy)) policy.removeActiveAdmin(legacy)
+        }
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
+
+    fun lockDeviceNow(): Boolean = NexoLockAccessibilityService.lockScreen()
 
     fun requestDefaultHomeRole() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {

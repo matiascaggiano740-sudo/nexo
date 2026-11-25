@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nexo_lock_service_description">NEXO no accede al contenido de la pantalla. El servicio solo ejecuta el bloqueo de Android cuando usás el gesto de doble toque.</string>
+</resources>

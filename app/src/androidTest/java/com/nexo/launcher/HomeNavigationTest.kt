@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertCountEquals
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
+import android.content.ComponentName
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -43,6 +44,7 @@ class HomeNavigationTest {
         val list = composeRule.onNodeWithTag("app-drawer-list").fetchSemanticsNode().boundsInRoot
         assertTrue("Filtered app should start at the first (left) grid column: app=$result list=$list", kotlin.math.abs(result.left - list.left) < 3f)
         composeRule.onAllNodesWithTag("drawer-app-$appPackage").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("drawer-app-menu-$appPackage").assertCountEquals(0)
     }
 
     @Test
@@ -51,13 +53,19 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("edit-widgets").assertExists()
         composeRule.onNodeWithTag("edit-wallpaper").assertExists()
-        composeRule.onNodeWithTag("edit-lock-screen").assertExists()
-        composeRule.onNodeWithTag("edit-choose-launcher").assertExists()
-        composeRule.onNodeWithTag("edit-backup").assertExists()
+        composeRule.onNodeWithTag("add-home-page").assertExists()
+        composeRule.onNodeWithTag("edit-folder").assertExists()
+        composeRule.onNodeWithTag("edit-pages").assertExists()
+        composeRule.onNodeWithTag("edit-settings").assertExists()
+        composeRule.onNodeWithTag("edit-settings").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings-lock").assertExists()
+        composeRule.onNodeWithTag("settings-default-home").assertExists()
+        composeRule.onNodeWithTag("settings-updates").assertExists()
     }
 
     @Test
-    fun doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission() {
+    fun doubleTapEmptyHomeCellOffersSystemAccessibilitySetup() {
         val blankPage = List(28) { "-" }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", blankPage.joinToString("|"))
@@ -71,6 +79,17 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("home-cell-8", useUnmergedTree = true).performTouchInput { doubleClick() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Doble toque para bloquear").assertExists()
+        composeRule.onNodeWithText("Abrir Accesibilidad").assertExists()
+    }
+
+    @Test
+    fun lockAccessibilityServiceIsRegisteredWithoutScreenContentAccess() {
+        val info = composeRule.activity.packageManager.getServiceInfo(
+            ComponentName(composeRule.activity, NexoLockAccessibilityService::class.java),
+            PackageManager.GET_META_DATA
+        )
+        assertEquals("android.permission.BIND_ACCESSIBILITY_SERVICE", info.permission)
+        assertTrue(info.metaData != null)
     }
 
     @Test

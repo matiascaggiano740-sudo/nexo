@@ -4,10 +4,19 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,6 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -32,24 +46,75 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 @Composable
-internal fun NexoSettingsDialog(onDismiss: () -> Unit, onUpdates: () -> Unit) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Ajustes de NEXO") },
-        text = {
-            Column {
-                Text("Launcher", style = MaterialTheme.typography.labelLarge)
-                TextButton(onClick = {
-                    runCatching { context.startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
-                }) { Text("Elegir NEXO como inicio predeterminado") }
-                TextButton(onClick = onUpdates, modifier = Modifier.fillMaxWidth().testTag("settings-updates")) {
-                    Text("Actualizaciones")
+internal fun NexoSettingsDialog(
+    onDismiss: () -> Unit,
+    onDefaultHome: () -> Unit,
+    onIcons: () -> Unit,
+    onLock: () -> Unit,
+    onBackup: () -> Unit,
+    onUpdates: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = Color(0xFF171411), contentColor = Color(0xFFF3EEE4)) {
+            Column(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                    .padding(horizontal = 22.dp, vertical = 12.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("NEXO", color = Color(0xFFD6AE70), style = MaterialTheme.typography.labelLarge)
+                        Text("Ajustes", color = Color(0xFFF3EEE4), fontSize = 28.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    }
+                    TextButton(onClick = onDismiss, modifier = Modifier.testTag("close-nexo-settings")) { Text("Listo") }
+                }
+                Text("Tu inicio, a tu manera.", color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
+                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(18.dp)) {
+                    SettingsSection("INICIO") {
+                        SettingsAction("Launcher predeterminado", "Elegí qué pantalla de inicio abre Android", "Abrir", "settings-default-home", onDefaultHome)
+                        SettingsAction("Gestos", "Doble toque para bloquear con el sistema de Android", "Configurar", "settings-lock", onLock)
+                    }
+                    SettingsSection("APARIENCIA") {
+                        SettingsAction("Estilo de iconos", "Elegí el aspecto de los iconos de tus aplicaciones", "Cambiar", "settings-icons", onIcons)
+                    }
+                    SettingsSection("DATOS Y ACTUALIZACIONES") {
+                        SettingsAction("Respaldo", "Guardá o restaurá la distribución de NEXO", "Abrir", "settings-backup", onBackup)
+                        SettingsAction("Actualizaciones", "Consultá la versión y las novedades disponibles", "Buscar", "settings-updates", onUpdates)
+                    }
+                    Text("Los permisos de Android se solicitan solo cuando activás una función que los necesita.",
+                        color = Color(0xFF9E9589), style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
-    )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+        Text(title, color = Color(0xFFD6AE70), style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(start = 4.dp))
+        Surface(color = Color(0xFF25211C), shape = RoundedCornerShape(22.dp), tonalElevation = 0.dp) {
+            Column { content() }
+        }
+    }
+}
+
+@Composable
+private fun SettingsAction(title: String, subtitle: String, action: String, tag: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag).padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color(0xFFF3EEE4), style = MaterialTheme.typography.titleSmall)
+            Text(subtitle, color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 3.dp))
+        }
+        Text(action, color = Color(0xFFD6AE70), style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = 12.dp))
+    }
 }
 
 @Composable
