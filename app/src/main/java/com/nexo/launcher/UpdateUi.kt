@@ -145,7 +145,7 @@ internal fun UpdateDialog(onDismiss: () -> Unit) {
                     Text(it.changelog, modifier = Modifier.padding(top = 8.dp))
                 }
                 Text(error ?: message, modifier = Modifier.padding(top = 8.dp), color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                if (busy && update != null) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                if (busy && update != null) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag("update-download-progress"))
             }
         },
         confirmButton = {

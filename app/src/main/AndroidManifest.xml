@@ -8,7 +8,8 @@
         android:icon="@mipmap/nexo_launcher"
         android:roundIcon="@mipmap/nexo_launcher"
         android:label="NEXO"
-        android:theme="@style/Theme.Nexo">
+        android:theme="@style/Theme.Nexo"
+        android:usesCleartextTraffic="${nexoAllowTestCleartext}">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.nexo.launcher.fileprovider"

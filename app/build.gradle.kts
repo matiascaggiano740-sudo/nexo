@@ -9,6 +9,12 @@ plugins {
 val releaseVersion = Properties().apply {
     rootProject.file("version.properties").inputStream().use { load(it) }
 }
+val updaterApiUrl = providers.gradleProperty("nexo.test.updateApiUrl")
+    .orElse("https://api.github.com/repos/matiascaggiano740-sudo/nexo/releases/latest")
+    .get()
+val allowTestCleartext = providers.gradleProperty("nexo.test.allowCleartext").orElse("false").get()
+val configuredVersionCode = providers.gradleProperty("nexo.test.versionCode")
+    .orElse(releaseVersion.getProperty("VERSION_CODE")).get().toInt()
 
 android {
     namespace = "com.nexo.launcher"
@@ -18,8 +24,10 @@ android {
         applicationId = "com.nexo.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = releaseVersion.getProperty("VERSION_CODE").toInt()
+        versionCode = configuredVersionCode
         versionName = releaseVersion.getProperty("VERSION_NAME")
+        manifestPlaceholders["nexoAllowTestCleartext"] = allowTestCleartext
+        buildConfigField("String", "NEXO_RELEASES_API_URL", "\"$updaterApiUrl\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -52,6 +60,7 @@ storeType = "PKCS12"
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

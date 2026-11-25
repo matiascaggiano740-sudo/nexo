@@ -36,12 +36,11 @@ internal class UpdateManager(private val context: Context) {
     companion object {
         const val PACKAGE_ID = "com.nexo.launcher"
         const val EXPECTED_CERT_SHA256 = "058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463"
-        private const val RELEASES_API = "https://api.github.com/repos/matiascaggiano740-sudo/nexo/releases/latest"
         private const val MANIFEST_ASSET = "nexo-update.json"
     }
 
     suspend fun check(): UpdateCheckResult = withContext(Dispatchers.IO) {
-        val release = readJson(RELEASES_API, "application/vnd.github+json")
+        val release = readJson(BuildConfig.NEXO_RELEASES_API_URL, "application/vnd.github+json")
         val assets = release.optJSONArray("assets") ?: error("El release no tiene archivos publicados")
         val manifestUrl = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
             .firstOrNull { it.optString("name") == MANIFEST_ASSET }
