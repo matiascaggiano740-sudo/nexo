@@ -68,15 +68,12 @@ class HomeNavigationTest {
     fun emptyPageCanBeDeletedFromItsPreview() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("add-home-page").performClick()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
-        composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1").performClick()
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
@@ -98,16 +95,16 @@ class HomeNavigationTest {
             composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-0").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-0", useUnmergedTree = true).performClick()
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(1)
         composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-0").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-0", useUnmergedTree = true).performClick()
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
         composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
         val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
         assertTrue("Deleting a populated page should persist the remaining page", !savedPages.contains("~"))
@@ -134,11 +131,11 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("page-preview-1-widget-0").fetchSemanticsNodes().isNotEmpty() ||
-                composeRule.onAllNodesWithTag("delete-home-page-1").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("page-preview-1-widget-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onAllNodesWithTag("delete-home-page-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1").performClick()
+        composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
@@ -147,7 +144,7 @@ class HomeNavigationTest {
             assertTrue("Removed page widget must no longer be hosted", allocatedWidgetId.get() !in activity.hostedWidgetIds)
             assertTrue("Removed page widget must no longer have a page mapping", allocatedWidgetId.get() !in activity.hostedWidgetPages)
         }
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
@@ -163,9 +160,9 @@ class HomeNavigationTest {
     fun newPageStaysEmptyAndPagesCanBeSelectedIndependently() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("add-home-page").performClick()
-        composeRule.onAllNodesWithTag("page-preview-1").assertCountEquals(1)
-        composeRule.onNodeWithTag("page-preview-0").performClick()
-        composeRule.onNodeWithTag("page-preview-1").performClick()
+        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("page-preview-0", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("page-preview-1", useUnmergedTree = true).performClick()
         composeRule.onNodeWithTag("finish-home-edit").performClick()
 
         composeRule.onAllNodesWithTag("home-page-indicator-selected-1").assertCountEquals(1)

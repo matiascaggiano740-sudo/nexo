@@ -154,17 +154,9 @@ monitor_test() {
 }
 
 methods=(
-  longPressingHomeAppDoesNotEnterPageEdit
-  swipeUpOnHomeOpensTheAppDrawer
-  swipeDownAtTopOfDrawerClosesIt
   emptyPageCanBeDeletedFromItsPreview
   populatedPageDeletionRequiresConfirmation
   deletingPageWithWidgetConfirmsAndRemovesItsPlacement
-  appDrawerOpensAndClosesFromExplicitControls
-  systemBackClosesTheAppDrawer
-  newPageStaysEmptyAndPagesCanBeSelectedIndependently
-  iconPackSelectionIsReachableFromHomeEdit
-  androidCanResolveNexoAsAHomeActivityWithoutChangingTheDefault
 )
 printf 'method,gradle_exit_code,junit_result,test_count,failures,errors,skipped,execution_state\n' > "$DIAG/test-summary.csv"
 attempted_tests=0

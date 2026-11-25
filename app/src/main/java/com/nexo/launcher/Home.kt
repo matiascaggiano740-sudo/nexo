@@ -1703,7 +1703,7 @@ private fun HomeMiniPagePreview(
             border = androidx.compose.foundation.BorderStroke(if (selected) 2.dp else 1.dp, outline),
             modifier = Modifier.fillMaxSize().semantics {
                 contentDescription = "Página ${index + 1}${if (selected) ", seleccionada" else ""} · ${packages.count { it.isNotBlank() && it != "-" }} apps · ${widgetIds.size} widgets"
-            }.clickable(onClick = onClick)
+            }
         ) {
         Column(
             Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF39352F), Color(0xFF201F1D))))
