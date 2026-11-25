@@ -967,6 +967,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 onFolder = { showNewFolder = true },
                 onIcons = { editingHome = false; showIconThemeDialog = true },
                 onManage = { editingHome = false; showPageManager = true },
+                onSettings = { editingHome = false; showSettingsDialog = true },
                 onBackup = { editingHome = false; showBackupDialog = true }
             )
         }
@@ -1624,6 +1625,7 @@ private fun HomeEditOverview(
     onFolder: () -> Unit,
     onIcons: () -> Unit,
     onManage: () -> Unit,
+    onSettings: () -> Unit,
     onBackup: () -> Unit
 ) {
     Column(
@@ -1638,13 +1640,16 @@ private fun HomeEditOverview(
                 Text("Personalizar inicio", color = Cream, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Text("Deslizá entre páginas y elegí una para editar", color = Cream.copy(alpha = 0.68f), fontSize = 12.sp)
             }
+            TextButton(onClick = onSettings, modifier = Modifier.testTag("open-nexo-settings"), shape = RoundedCornerShape(22.dp)) {
+                Text("Ajustes", color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
             TextButton(onClick = onClose, modifier = Modifier.testTag("finish-home-edit"), shape = RoundedCornerShape(22.dp)) {
                 Text("Listo", color = Color.White, fontWeight = FontWeight.SemiBold)
             }
         }
         Spacer(Modifier.height(8.dp))
         Row(
-            Modifier.fillMaxWidth().weight(1f).horizontalScroll(rememberScrollState()),
+            Modifier.fillMaxWidth().weight(1f).horizontalScroll(rememberScrollState()).testTag("home-edit-pages-row"),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1685,6 +1690,7 @@ private fun HomeEditOverview(
                 HomeEditActionCard("Iconos", "Elegir estilo", Modifier.weight(1f), onIcons, testTag = "icon-theme-open")
                 HomeEditActionCard("Páginas", "Ordenar o borrar", Modifier.weight(1f), onManage)
             }
+            HomeEditActionCard("Ajustes", "Launcher y actualizaciones", Modifier.fillMaxWidth(), onSettings, compact = true, testTag = "settings-card")
             HomeEditActionCard("Respaldo", "Guardar o restaurar la distribución del inicio", Modifier.fillMaxWidth(), onBackup, compact = true)
         }
     }

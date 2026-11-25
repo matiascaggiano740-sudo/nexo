@@ -72,8 +72,11 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("add-home-page").performClick()
         composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("home-edit-pages-row", useUnmergedTree = true).performTouchInput { swipeLeft() }
         composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
-        composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+        }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(0)
         val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
         assertTrue("Deleting the empty page must persist only the remaining page; saved pages were: $savedPages", !savedPages.contains("~"))
@@ -105,7 +108,12 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("home-page-app").performTouchInput {
             down(source.center - source.topLeft)
             advanceEventTime(700)
-            moveTo(target - source.topLeft, 500)
+            val origin = source.center - source.topLeft
+            val destination = target - source.topLeft
+            for (step in 1..12) {
+                val fraction = step / 12f
+                moveTo(origin + (destination - origin) * fraction, 35)
+            }
             advanceEventTime(100)
             up()
         }
@@ -199,9 +207,11 @@ class HomeNavigationTest {
         composeRule.waitUntil(10_000) {
             composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag("page-preview-1-widget-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        composeRule.activityRule.scenario.onActivity { activity ->
+            assertEquals("The page to delete contains two genuine provider-bound widgets", 2,
+                activity.hostedWidgetPages.values.count { it == 1 && android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(activity.hostedWidgetIds.first { id -> activity.hostedWidgetPages[id] == 1 }) != null })
         }
+        composeRule.onNodeWithTag("home-edit-pages-row", useUnmergedTree = true).performTouchInput { swipeLeft() }
         composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).assertCountEquals(1)
         composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
@@ -291,11 +301,7 @@ class HomeNavigationTest {
     @Test
     fun updateCheckerIsReachableFromNexoSettings() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.onNodeWithTag("home-more-actions").performClick()
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag("menu-open-nexo-settings").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("menu-open-nexo-settings").performClick()
+        composeRule.onNodeWithTag("open-nexo-settings").performClick()
         composeRule.onNodeWithTag("settings-updates").performClick()
         composeRule.onAllNodesWithText("Actualizaciones de NEXO").assertCountEquals(1)
     }
