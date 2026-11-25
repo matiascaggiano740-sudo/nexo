@@ -50,7 +50,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
@@ -167,7 +167,7 @@ fun Home() {
             ?.split("~")?.map { it.split("|").filter(String::isNotBlank) }
         mutableStateOf(savedPages ?: listOf(homePackages))
     }
-    val homeCellBounds = remember { mutableStateMapOf<Int, Rect>() }
+    val homeCellBounds = remember { mutableStateMapOf<Int, ComposeRect>() }
     var currentPage by remember {
         mutableIntStateOf(ctx.getSharedPreferences("nexo_home", 0).getInt("current_page", 0).coerceAtLeast(0))
     }
@@ -1965,8 +1965,8 @@ private fun HomeAppCell(
     iconSize: Dp,
     onLongPress: () -> Unit,
     onDoubleTapEmpty: () -> Unit = {},
-    cellBounds: Map<Int, Rect>,
-    onCellBoundsChanged: (Int, Rect) -> Unit,
+    cellBounds: Map<Int, ComposeRect>,
+    onCellBoundsChanged: (Int, ComposeRect) -> Unit,
     onRemove: (String) -> Unit,
     onDrop: (String, Int) -> Unit
 ) {
