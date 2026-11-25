@@ -13,8 +13,11 @@ val updaterApiUrl = providers.gradleProperty("nexo.test.updateApiUrl")
     .orElse("https://api.github.com/repos/matiascaggiano740-sudo/nexo/releases/latest")
     .get()
 val allowTestCleartext = providers.gradleProperty("nexo.test.allowCleartext").orElse("false").get()
+val allowTestLoopbackHttp = providers.gradleProperty("nexo.test.allowLoopbackHttp").orElse("false").get().toBoolean()
 val configuredVersionCode = providers.gradleProperty("nexo.test.versionCode")
     .orElse(releaseVersion.getProperty("VERSION_CODE")).get().toInt()
+val signDebugWithReleaseForOtaTest = providers.gradleProperty("nexo.test.signDebugWithRelease")
+    .orElse("false").get().toBoolean()
 
 android {
     namespace = "com.nexo.launcher"
@@ -28,6 +31,7 @@ android {
         versionName = releaseVersion.getProperty("VERSION_NAME")
         manifestPlaceholders["nexoAllowTestCleartext"] = allowTestCleartext
         buildConfigField("String", "NEXO_RELEASES_API_URL", "\"$updaterApiUrl\"")
+        buildConfigField("boolean", "NEXO_ALLOW_TEST_LOOPBACK_HTTP", allowTestLoopbackHttp.toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -46,6 +50,9 @@ storeType = "PKCS12"
     buildTypes {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
+        }
+        getByName("debug") {
+            if (signDebugWithReleaseForOtaTest) signingConfig = signingConfigs.getByName("release")
         }
     }
 

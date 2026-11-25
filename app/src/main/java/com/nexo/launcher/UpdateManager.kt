@@ -40,6 +40,7 @@ internal class UpdateManager(private val context: Context) {
     }
 
     suspend fun check(): UpdateCheckResult = withContext(Dispatchers.IO) {
+        require(isTrustedUpdateUrl(BuildConfig.NEXO_RELEASES_API_URL)) { "La URL del manifiesto debe usar HTTPS" }
         val release = readJson(BuildConfig.NEXO_RELEASES_API_URL, "application/vnd.github+json")
         val assets = release.optJSONArray("assets") ?: error("El release no tiene archivos publicados")
         val manifestUrl = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
@@ -58,7 +59,7 @@ internal class UpdateManager(private val context: Context) {
             signingCertificateSha256 = UpdateValidation.normalizeHex(json.getString("signingCertificateSha256")),
         )
         require(update.applicationId == PACKAGE_ID) { "El paquete publicado no es NEXO" }
-        require(update.apkUrl.startsWith("https://")) { "La URL del APK no es HTTPS" }
+        require(isTrustedUpdateUrl(update.apkUrl)) { "La URL del APK no es HTTPS" }
         require(update.sha256.matches(Regex("[A-F0-9]{64}"))) { "SHA-256 publicado inválido" }
         require(update.signingCertificateSha256 == EXPECTED_CERT_SHA256) { "El certificado publicado no coincide con la firma esperada" }
         val installed = installedVersionCode()
@@ -164,6 +165,13 @@ internal class UpdateManager(private val context: Context) {
     private fun signerFingerprint(certificates: List<ByteArray>): String {
         require(certificates.size == 1) { "Se esperaba un único certificado de firma" }
         return MessageDigest.getInstance("SHA-256").digest(certificates.single()).toHex()
+    }
+
+    private fun isTrustedUpdateUrl(value: String): Boolean {
+        if (value.startsWith("https://", ignoreCase = true)) return true
+        if (!BuildConfig.DEBUG || !BuildConfig.NEXO_ALLOW_TEST_LOOPBACK_HTTP) return false
+        val uri = Uri.parse(value)
+        return uri.scheme.equals("http", ignoreCase = true) && uri.host in setOf("127.0.0.1", "localhost")
     }
 
     private fun readJson(url: String, accept: String): JSONObject {
