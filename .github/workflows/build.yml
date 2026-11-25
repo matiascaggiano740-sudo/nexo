@@ -6,6 +6,10 @@ on:
       - zapia/launcher-refresh
     paths:
       - .github/workflows/build.yml
+      - app/src/main/java/com/nexo/launcher/Home.kt
+      - app/src/main/java/com/nexo/launcher/MainActivity.kt
+      - app/src/androidTest/java/com/nexo/launcher/HomeNavigationTest.kt
+      - scripts/diagnose-emulator.sh
   workflow_dispatch:
 
 permissions:
@@ -23,10 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 99bbdb11f336c5a9333de53bf1e6160cbe53a361
+          ref: 0b6d05b8b85f4e420b792a644777dca478dbd287
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "99bbdb11f336c5a9333de53bf1e6160cbe53a361"
+        run: test "$(git rev-parse HEAD)" = "0b6d05b8b85f4e420b792a644777dca478dbd287"
 
       - name: Verify Bash 3.2 and syntax compatibility
         shell: bash
@@ -53,10 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 99bbdb11f336c5a9333de53bf1e6160cbe53a361
+          ref: 0b6d05b8b85f4e420b792a644777dca478dbd287
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "99bbdb11f336c5a9333de53bf1e6160cbe53a361"
+        run: test "$(git rev-parse HEAD)" = "0b6d05b8b85f4e420b792a644777dca478dbd287"
 
       - name: Enable KVM group permissions
         run: |
@@ -245,7 +249,7 @@ jobs:
           mkdir -p candidate
           cp "$apk" candidate/app-release.apk
           {
-            echo 'source_commit=99bbdb11f336c5a9333de53bf1e6160cbe53a361 (configuration-only child of 8d9427a33f8bb20c7bb524a3df2715110bf7feac)'
+            echo 'source_commit=0b6d05b8b85f4e420b792a644777dca478dbd287 (launcher fixes based on tested NEXO branch)'
             echo 'applicationId=com.nexo.launcher'
             echo "versionCode=$version_code"
             echo "versionName=$version_name"
@@ -277,7 +281,7 @@ jobs:
       - name: Publish exact tested Release candidate as a CI artifact (no public release)
         uses: actions/upload-artifact@v6
         with:
-          name: NEXO-Release-candidate-8d9427a
+          name: NEXO-Release-candidate-0b6d05b
           path: candidate/
           if-no-files-found: error
           retention-days: 30
