@@ -80,8 +80,10 @@ class OtaEndToEndTest {
     }
 
     private fun openUpdater() {
-        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("open-nexo-settings").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("settings-updates").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("settings-updates").performClick()
     }
 
