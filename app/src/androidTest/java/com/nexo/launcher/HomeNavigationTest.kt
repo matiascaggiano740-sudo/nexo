@@ -76,7 +76,7 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(0)
         val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
-        assertTrue("Deleting the empty page must persist only the remaining page", !savedPages.contains("~"))
+        assertTrue("Deleting the empty page must persist only the remaining page; saved pages were: $savedPages", !savedPages.contains("~"))
         composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
     }
 
@@ -199,6 +199,9 @@ class HomeNavigationTest {
         composeRule.waitUntil(10_000) {
             composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("page-preview-1-widget-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).assertCountEquals(1)
         composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
@@ -288,8 +291,11 @@ class HomeNavigationTest {
     @Test
     fun updateCheckerIsReachableFromNexoSettings() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Más").performClick()
-        composeRule.onNodeWithText("Ajustes de NEXO").performClick()
+        composeRule.onNodeWithTag("home-more-actions").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("menu-open-nexo-settings").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("menu-open-nexo-settings").performClick()
         composeRule.onNodeWithTag("settings-updates").performClick()
         composeRule.onAllNodesWithText("Actualizaciones de NEXO").assertCountEquals(1)
     }

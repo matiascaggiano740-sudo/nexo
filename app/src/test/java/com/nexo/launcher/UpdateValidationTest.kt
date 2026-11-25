@@ -36,6 +36,9 @@ class UpdateValidationTest {
         assertThrows(IllegalArgumentException::class.java) {
             UpdateValidation.validatePackageAndVersion("com.nexo.launcher", 1002, "1.0.1", update)
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            UpdateValidation.validatePackageAndVersion("com.nexo.launcher", 1001, "9.9.9", update)
+        }
     }
 
     @Test fun onlyExpectedMatchingSigningCertificatesAreAccepted() {

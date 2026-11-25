@@ -151,7 +151,8 @@ fun Home() {
         val prefs = ctx.getSharedPreferences("nexo_home", 0)
         val savedPages = prefs.getString("pages", "")?.takeIf { it.isNotBlank() }
             ?.split("~")?.map { it.split("|").filter(String::isNotBlank) }
-        mutableStateOf(savedPages?.firstOrNull() ?: prefs.getString("packages", "")
+        val requestedPage = prefs.getInt("current_page", 0).coerceAtLeast(0)
+        mutableStateOf(savedPages?.getOrNull(requestedPage) ?: savedPages?.firstOrNull() ?: prefs.getString("packages", "")
             ?.takeIf { it.isNotBlank() }?.split("|") ?: emptyList())
     }
     var homePages by remember {
@@ -168,6 +169,12 @@ fun Home() {
         val normalized = currentPage.coerceIn(0, last)
         if (normalized != currentPage) currentPage = normalized
         else ctx.getSharedPreferences("nexo_home", 0).edit().putInt("current_page", currentPage).apply()
+    }
+    fun selectHomePage(index: Int) {
+        if (index !in homePages.indices) return
+        currentPage = index
+        homePackages = homePages[index]
+        ctx.getSharedPreferences("nexo_home", 0).edit().putInt("current_page", index).apply()
     }
     var userFolders by remember { mutableStateOf(readUserFolders(ctx)) }
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
@@ -238,28 +245,33 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
     fun deleteHomePage(index: Int) {
         if (index !in homePages.indices || homePages.size <= 1) return
-        val pageWidgetIds = launcherActivity?.hostedWidgetIds
-            ?.filter { launcherActivity.hostedWidgetPages[it] == index }
-            ?.toList().orEmpty()
-        pageWidgetIds.forEach { launcherActivity?.removeWidget(it) }
-        launcherActivity?.deleteWidgetPage(index)
         val updatedPages = homePages.toMutableList().apply { removeAt(index) }
             .ifEmpty { mutableListOf(emptyList()) }
             .mapIndexed { pageIndex, page ->
                 if (index == 0 && pageIndex == 0 && page.isEmpty()) List(28) { "-" } else page.toList()
             }
-        val previousCurrent = currentPage
-        currentPage = when {
-            previousCurrent > index -> previousCurrent - 1
-            previousCurrent == index -> index.coerceAtMost(updatedPages.lastIndex)
-            else -> previousCurrent.coerceAtMost(updatedPages.lastIndex)
+        val nextCurrentPage = when {
+            currentPage > index -> currentPage - 1
+            currentPage == index -> index.coerceAtMost(updatedPages.lastIndex)
+            else -> currentPage.coerceAtMost(updatedPages.lastIndex)
         }
-        homePages = updatedPages
-        homePackages = updatedPages.getOrNull(currentPage).orEmpty()
-        ctx.getSharedPreferences("nexo_home", 0).edit()
+        val saved = ctx.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") })
             .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
-            .apply()
+            .putInt("current_page", nextCurrentPage)
+            .commit()
+        if (!saved) {
+            Toast.makeText(ctx, "No se pudo guardar la eliminación de la página", Toast.LENGTH_LONG).show()
+            return
+        }
+        val pageWidgetIds = launcherActivity?.hostedWidgetIds
+            ?.filter { launcherActivity.hostedWidgetPages[it] == index }
+            ?.toList().orEmpty()
+        pageWidgetIds.forEach { launcherActivity?.removeWidget(it) }
+        launcherActivity?.deleteWidgetPage(index)
+        currentPage = nextCurrentPage
+        homePages = updatedPages
+        homePackages = updatedPages.getOrNull(currentPage).orEmpty()
     }
 
     fun requestDeleteHomePage(index: Int) {
@@ -447,8 +459,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                         pageSwipeX = value
                                     }
                                     val nextPage = currentPage + direction
-                                    currentPage = nextPage
-                                    homePackages = homePages.getOrNull(nextPage).orEmpty()
+                                    selectHomePage(nextPage)
                                     animation.snapTo(if (direction > 0) width else -width)
                                     pageSwipeX = animation.value
                                 }
@@ -748,15 +759,16 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         })
                         HomeEditAction("+ Página", onClick = {
                             val expanded = (homePages + listOf(emptyList())).toMutableList()
+                            val newPage = expanded.lastIndex
                             ctx.getSharedPreferences("nexo_home", 0).edit()
-                                .putString("pages", expanded.joinToString("~") { it.joinToString("|") }).apply()
+                                .putString("pages", expanded.joinToString("~") { it.joinToString("|") })
+                                .putInt("current_page", newPage).apply()
                             homePages = expanded
-                            currentPage = expanded.lastIndex
-                            homePackages = emptyList()
+                            selectHomePage(newPage)
                         })
                         HomeEditAction("+ Carpeta", onClick = { showNewFolder = true })
                         Box {
-                            HomeEditAction("Más", onClick = { showHomeMoreActions = true })
+                            HomeEditAction("Más", onClick = { showHomeMoreActions = true }, testTag = "home-more-actions")
                             DropdownMenu(expanded = showHomeMoreActions, onDismissRequest = { showHomeMoreActions = false }) {
                                 DropdownMenuItem(text = { Text("Administrar páginas") }, onClick = { showHomeMoreActions = false; showPageManager = true })
                                 DropdownMenuItem(text = { Text("Opciones de inicio de Android") }, onClick = {
@@ -766,7 +778,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 })
                                 DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
                                 DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
-                                DropdownMenuItem(text = { Text("Ajustes de NEXO") }, onClick = { showHomeMoreActions = false; showSettingsDialog = true })
+                                DropdownMenuItem(modifier = Modifier.testTag("menu-open-nexo-settings"), text = { Text("Ajustes de NEXO") }, onClick = { showHomeMoreActions = false; showSettingsDialog = true })
                             }
                         }
                         HomeEditAction("Listo", onClick = { editingHome = false; showHomeMoreActions = false })
@@ -781,7 +793,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 ) {
                     homePages.indices.forEach { page ->
                         HomePageIndicator(page = page, selected = currentPage == page,
-                            onSelect = { currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
+                            onSelect = { selectHomePage(page) },
                             onDrop = { payload ->
                                 val fromDock = payload.startsWith("dock:")
                                 val token = payload.removePrefix("home:").removePrefix("dock:")
@@ -931,7 +943,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 defaultPackages = defaultHomeApps.map { it.pkg },
                 widgetIdsByPage = launcherActivity?.hostedWidgetIds?.groupBy { id -> launcherActivity.hostedWidgetPages[id] ?: 0 }.orEmpty(),
                 onDeletePage = { requestDeleteHomePage(it) },
-                onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
+                onSelectPage = { page -> selectHomePage(page) },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
                     val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) defaultHomeApps.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + 8 + if (currentPage == 0) 8 else 0
@@ -945,11 +957,12 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 },
                 onAddPage = {
                     val expanded = (homePages + listOf(emptyList())).toMutableList()
+                    val newPage = expanded.lastIndex
                     ctx.getSharedPreferences("nexo_home", 0).edit()
-                        .putString("pages", expanded.joinToString("~") { it.joinToString("|") }).apply()
+                        .putString("pages", expanded.joinToString("~") { it.joinToString("|") })
+                        .putInt("current_page", newPage).apply()
                     homePages = expanded
-                    currentPage = expanded.lastIndex
-                    homePackages = emptyList()
+                    selectHomePage(newPage)
                 },
                 onFolder = { showNewFolder = true },
                 onIcons = { editingHome = false; showIconThemeDialog = true },
@@ -1231,7 +1244,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     }
     if (showPageManager) PageManagerDialog(homePages, currentPage, launcherActivity?.hostedWidgetPages?.values?.toSet().orEmpty(),
         onDismiss = { showPageManager = false },
-        onSelect = { currentPage = it; homePackages = homePages.getOrNull(it).orEmpty(); showPageManager = false },
+        onSelect = { selectHomePage(it); showPageManager = false }
         onMove = { from, to ->
             if (from in homePages.indices && to in homePages.indices) {
                 val oldCurrent = currentPage
