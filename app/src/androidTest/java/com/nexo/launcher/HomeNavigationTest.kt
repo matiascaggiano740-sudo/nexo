@@ -58,17 +58,27 @@ class HomeNavigationTest {
 
     @Test
     fun doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission() {
-        composeRule.onNodeWithTag("home-cell-20", useUnmergedTree = true).performTouchInput { doubleClick() }
+        val blankPage = List(28) { "-" }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", blankPage.joinToString("|"))
+            .putString("packages", blankPage.joinToString("|"))
+            .putInt("current_page", 0)
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("home-cell-8", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("home-cell-8", useUnmergedTree = true).performTouchInput { doubleClick() }
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Doble toque para bloquear").assertExists()
     }
 
     @Test
     fun widgetPickerShowsVisualPreviewCards() {
-        val provider = android.appwidget.AppWidgetManager.getInstance(composeRule.activity)
-            .installedProviders.firstOrNull()
-        assertTrue("The emulator must have the test widget provider installed", provider != null)
         composeRule.runOnUiThread { composeRule.activity.launchWidgetPicker(0, 0) }
+        composeRule.waitUntil(5_000) { composeRule.activity.availableWidgetProviders.isNotEmpty() }
+        val provider = composeRule.activity.availableWidgetProviders.firstOrNull()
+        assertTrue("The emulator must expose at least one widget provider to the real picker", provider != null)
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("widget-provider-${provider!!.provider.packageName}").assertExists()
     }
