@@ -1398,6 +1398,7 @@ private fun HomeHeader(
             Box(
                 Modifier.padding(end = 2.dp).size(42.dp).clip(RoundedCornerShape(16.dp))
                     .background(Color.White.copy(alpha = 0.08f)).testTag("open-nexo-settings")
+                    .semantics { contentDescription = "Ajustes de NEXO" }
                     .clickable(onClick = onSettings), contentAlignment = Alignment.Center
             ) { Text("⚙", color = Color(0xFFD6AE70), fontSize = 20.sp) }
         }
