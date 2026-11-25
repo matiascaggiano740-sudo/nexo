@@ -158,12 +158,14 @@ methods=(
   swipeUpOnHomeOpensTheAppDrawer
   swipeDownAtTopOfDrawerClosesIt
   emptyPageCanBeDeletedFromItsPreview
+  longPressDragMovesAnAppIntoAnEmptyHomeCellAndPersistsIt
   populatedPageDeletionRequiresConfirmation
   deletingPageWithWidgetConfirmsAndRemovesItsPlacement
   appDrawerOpensAndClosesFromExplicitControls
   systemBackClosesTheAppDrawer
   newPageStaysEmptyAndPagesCanBeSelectedIndependently
   iconPackSelectionIsReachableFromHomeEdit
+  updateCheckerIsReachableFromNexoSettings
   androidCanResolveNexoAsAHomeActivityWithoutChangingTheDefault
 )
 printf 'method,gradle_exit_code,junit_result,test_count,failures,errors,skipped,execution_state\n' > "$DIAG/test-summary.csv"

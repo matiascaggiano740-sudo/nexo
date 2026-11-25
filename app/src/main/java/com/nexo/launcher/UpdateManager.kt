@@ -98,7 +98,7 @@ internal class UpdateManager(private val context: Context) {
             query.use { cursor ->
                 if (!cursor.moveToFirst()) error("Android no encontró la descarga")
                 when (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
-                    DownloadManager.STATUS_SUCCESSFUL -> { onProgress(100); finished = true }
+                    DownloadManager.STATUS_SUCCESSFUL -> { withContext(Dispatchers.Main) { onProgress(100) }; finished = true }
                     DownloadManager.STATUS_FAILED -> {
                         val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
                         prefs.edit().remove("download_id").apply()
@@ -108,7 +108,7 @@ internal class UpdateManager(private val context: Context) {
                     DownloadManager.STATUS_RUNNING, DownloadManager.STATUS_PENDING, DownloadManager.STATUS_PAUSED -> {
                         val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
                         val current = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                        if (total > 0) onProgress(((current * 100) / total).toInt().coerceIn(0, 99))
+                        if (total > 0) withContext(Dispatchers.Main) { onProgress(((current * 100) / total).toInt().coerceIn(0, 99)) }
                     }
                     else -> error("Estado de descarga desconocido")
                 }

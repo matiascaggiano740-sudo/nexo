@@ -6,6 +6,7 @@ on:
       - 'v*'
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -57,6 +58,14 @@ jobs:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
         run: gradle assembleRelease --no-daemon
+      - name: Download the historical signed Release APK from the approved baseline run
+        uses: actions/download-artifact@v6
+        with:
+          name: NEXO-build-and-test-diagnostics
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 45413173460
+          path: historical-artifact
       - name: Verify APK identity and permanent signing certificate; prepare manifest
         shell: bash
         env:
@@ -88,6 +97,37 @@ jobs:
           pathlib.Path('nexo-update.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
           print(f"version={name} versionCode={code} sha256={digest} signing={os.environ['EXPECTED_CERT_SHA256']}")
           PY
+      - name: Test signed in-place upgrade and user-data preservation on Android 35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            old_apk=$(find historical-artifact -path '*/outputs/apk/release/app-release.apk' -type f | head -n 1)
+            new_apk=app/build/outputs/apk/release/app-release.apk
+            test -s "$old_apk" && test -s "$new_apk"
+            apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+            old_cert=$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            new_cert=$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            test "$old_cert" = "$EXPECTED_CERT_SHA256" && test "$new_cert" = "$EXPECTED_CERT_SHA256"
+            adb install "$old_apk"
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            seed_result=$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)
+            printf '%s\n' "$seed_result"
+            echo "$seed_result" | grep -Fq 'OK (1 test)'
+            adb install -r "$new_apk"
+            upgrade_result=$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)
+            printf '%s\n' "$upgrade_result"
+            echo "$upgrade_result" | grep -Fq 'OK (1 test)'
+        env:
+          EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
       - name: Publish signed APK and stable update manifest
         env:
           GH_TOKEN: ${{ github.token }}

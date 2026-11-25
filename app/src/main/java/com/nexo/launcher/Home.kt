@@ -160,7 +160,15 @@ fun Home() {
             ?.split("~")?.map { it.split("|").filter(String::isNotBlank) }
         mutableStateOf(savedPages ?: listOf(homePackages))
     }
-    var currentPage by remember { mutableIntStateOf(0) }
+    var currentPage by remember {
+        mutableIntStateOf(ctx.getSharedPreferences("nexo_home", 0).getInt("current_page", 0).coerceAtLeast(0))
+    }
+    LaunchedEffect(homePages.size, currentPage) {
+        val last = (homePages.size - 1).coerceAtLeast(0)
+        val normalized = currentPage.coerceIn(0, last)
+        if (normalized != currentPage) currentPage = normalized
+        else ctx.getSharedPreferences("nexo_home", 0).edit().putInt("current_page", currentPage).apply()
+    }
     var userFolders by remember { mutableStateOf(readUserFolders(ctx)) }
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
@@ -169,6 +177,7 @@ fun Home() {
     var showHomeMoreActions by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         if (ctx.getSharedPreferences("nexo_updates", 0).getLong("pending_version", -1L) > 0L) showUpdateDialog = true
@@ -757,7 +766,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 })
                                 DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
                                 DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
-                                DropdownMenuItem(text = { Text("Ajustes · Actualizaciones") }, onClick = { showHomeMoreActions = false; showUpdateDialog = true })
+                                DropdownMenuItem(text = { Text("Ajustes de NEXO") }, onClick = { showHomeMoreActions = false; showSettingsDialog = true })
                             }
                         }
                         HomeEditAction("Listo", onClick = { editingHome = false; showHomeMoreActions = false })
@@ -1041,6 +1050,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de administrador", Toast.LENGTH_LONG).show() }
         }) { Text("Revisar permiso") } },
         dismissButton = { TextButton(onClick = { showLockAdminDialog = false }) { Text("Ahora no") } }
+    )
+    if (showSettingsDialog) NexoSettingsDialog(
+        onDismiss = { showSettingsDialog = false },
+        onUpdates = { showSettingsDialog = false; showUpdateDialog = true }
     )
     if (showUpdateDialog) UpdateDialog(onDismiss = { showUpdateDialog = false })
     if (showBackupDialog) AlertDialog(
@@ -1940,6 +1953,7 @@ private fun HomeAppCell(
         Modifier
             .fillMaxWidth()
             .height(cellHeight)
+            .testTag("home-cell-$index")
             .clipToBounds()
             .then(
                 if (app == null && folderName == null) {

@@ -6,6 +6,10 @@ on:
       - zapia/launcher-refresh
   workflow_dispatch:
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   bash32-compat:
     name: Validate diagnostic script with macOS Bash 3.2
@@ -173,6 +177,15 @@ jobs:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
 
+      - name: Descargar el APK Release histórico firmado (run de base aprobado)
+        uses: actions/download-artifact@v6
+        with:
+          name: NEXO-build-and-test-diagnostics
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 45413173460
+          path: historical-artifact
+
       - name: Verificar identidad y certificado permanente del Release
         shell: bash
         env:
@@ -189,6 +202,38 @@ jobs:
           "$apksigner" verify --verbose "$apk"
           signer=$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$signer" = "$EXPECTED_CERT_SHA256" || { echo 'Release certificate mismatch; do not distribute this APK.' >&2; exit 1; }
+
+      - name: Probar actualización firmada y persistencia en emulador desde APK histórico
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            old_apk=$(find historical-artifact -path '*/outputs/apk/release/app-release.apk' -type f | head -n 1)
+            new_apk=app/build/outputs/apk/release/app-release.apk
+            test -s "$old_apk" && test -s "$new_apk"
+            apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+            old_cert=$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            new_cert=$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            test "$old_cert" = "$EXPECTED_CERT_SHA256" && test "$new_cert" = "$EXPECTED_CERT_SHA256"
+            adb install "$old_apk"
+            adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            seed_result=$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)
+            printf '%s\n' "$seed_result"
+            echo "$seed_result" | grep -Fq 'OK (1 test)'
+            adb install -r "$new_apk"
+            upgrade_result=$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)
+            printf '%s\n' "$upgrade_result"
+            echo "$upgrade_result" | grep -Fq 'OK (1 test)'
+        env:
+          EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
 
       - uses: actions/upload-artifact@v6
         if: always()

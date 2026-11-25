@@ -1,12 +1,14 @@
 package com.nexo.launcher
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertExists
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
@@ -79,6 +81,45 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun longPressDragMovesAnAppIntoAnEmptyHomeCellAndPersistsIt() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val appPackage = composeRule.activity.packageManager
+            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+            ?.activityInfo?.packageName
+        assertTrue("The emulator must provide a launchable app for drag test", appPackage != null)
+        val page = MutableList(28) { "-" }.apply { this[8] = appPackage!! }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0)
+            .apply()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
+        }
+        val source = composeRule.onNodeWithTag("home-page-app").fetchSemanticsNode().boundsInRoot
+        val targetNode = composeRule.onNodeWithTag("home-cell-9", useUnmergedTree = true)
+        val target = targetNode.fetchSemanticsNode().boundsInRoot.center
+        targetNode.assertExists()
+        composeRule.onNodeWithTag("home-page-app").performTouchInput {
+            down(source.center - source.topLeft)
+            advanceEventTime(700)
+            moveTo(target - source.topLeft, 500)
+            advanceEventTime(100)
+            up()
+        }
+        composeRule.waitForIdle()
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "")
+                ?.split("|")?.getOrNull(9) == appPackage
+        }
+        val saved = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|")
+        assertEquals("The destination cell must contain the moved app", appPackage, saved[9])
+        assertEquals("The source cell must become empty", "-", saved[8])
+    }
+
+    @Test
     fun populatedPageDeletionRequiresConfirmation() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val launchablePackages = composeRule.activity.packageManager
@@ -124,6 +165,7 @@ class HomeNavigationTest {
             .apply()
         composeRule.activityRule.scenario.recreate()
         val allocatedWidgetId = java.util.concurrent.atomic.AtomicInteger(-1)
+        val preservedWidgetId = java.util.concurrent.atomic.AtomicInteger(-1)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         try {
             instrumentation.uiAutomation.adoptShellPermissionIdentity(android.Manifest.permission.BIND_APPWIDGET)
@@ -135,14 +177,19 @@ class HomeNavigationTest {
                 }
                 assertTrue("The instrumentation APK must install the test widget provider", provider != null)
                 val host = android.appwidget.AppWidgetHost(activity, 0x4E45584F)
+                val survivorId = host.allocateAppWidgetId()
                 val id = host.allocateAppWidgetId()
+                preservedWidgetId.set(survivorId)
                 allocatedWidgetId.set(id)
-                assertTrue("Android must bind the test ID to a real widget provider", widgetManager.bindAppWidgetIdIfAllowed(id, provider!!.provider))
+                assertTrue("Android must bind the first test ID to a real widget provider", widgetManager.bindAppWidgetIdIfAllowed(survivorId, provider!!.provider))
+                assertTrue("Android must bind the page-2 test ID to a real widget provider", widgetManager.bindAppWidgetIdIfAllowed(id, provider.provider))
                 assertEquals("Android must report the bound provider", provider.provider, widgetManager.getAppWidgetInfo(id)?.provider)
+                activity.hostedWidgetIds.add(survivorId)
+                activity.hostedWidgetPages[survivorId] = 0
                 activity.hostedWidgetIds.add(id)
                 activity.hostedWidgetPages[id] = 1
                 assertEquals("Test widget must be assigned to page 2", 1, activity.hostedWidgetPages[id])
-                assertTrue("NEXO must create an AppWidgetHostView for the bound widget", activity.createWidgetHostView(id) != null)
+                assertTrue("NEXO must create an AppWidgetHostView for each bound widget", activity.createWidgetHostView(id) != null && activity.createWidgetHostView(survivorId) != null)
             }
         } finally {
             instrumentation.uiAutomation.dropShellPermissionIdentity()
@@ -162,12 +209,15 @@ class HomeNavigationTest {
             assertTrue("Removed page widget must no longer be hosted", allocatedWidgetId.get() !in activity.hostedWidgetIds)
             assertTrue("Removed page widget must no longer have a page mapping", allocatedWidgetId.get() !in activity.hostedWidgetPages)
             assertTrue("Android must release the deleted widget ID", android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(allocatedWidgetId.get()) == null)
+            assertTrue("A widget on another page must survive deletion", preservedWidgetId.get() in activity.hostedWidgetIds)
+            assertEquals("Widgets on later pages must be reindexed after deletion", 0, activity.hostedWidgetPages[preservedWidgetId.get()])
         }
             composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
         } finally {
-            val id = allocatedWidgetId.get()
-            if (id >= 0) composeRule.activityRule.scenario.onActivity { activity ->
-                android.appwidget.AppWidgetHost(activity, 0x4E45584F).deleteAppWidgetId(id)
+            val ids = listOf(allocatedWidgetId.get(), preservedWidgetId.get()).filter { it >= 0 }
+            if (ids.isNotEmpty()) composeRule.activityRule.scenario.onActivity { activity ->
+                val host = android.appwidget.AppWidgetHost(activity, 0x4E45584F)
+                ids.forEach(host::deleteAppWidgetId)
             }
         }
     }
@@ -201,6 +251,14 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("home-page-indicator-selected-1").assertCountEquals(1)
         composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getInt("current_page", -1) == 1
+        }
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("home-page-indicator-selected-1").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
     }
 
     @Test
@@ -225,6 +283,15 @@ class HomeNavigationTest {
         }
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("open-app-drawer").assertCountEquals(1)
+    }
+
+    @Test
+    fun updateCheckerIsReachableFromNexoSettings() {
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Más").performClick()
+        composeRule.onNodeWithText("Ajustes de NEXO").performClick()
+        composeRule.onNodeWithTag("settings-updates").performClick()
+        composeRule.onNodeWithText("Actualizaciones de NEXO").assertExists()
     }
 
     @Test
