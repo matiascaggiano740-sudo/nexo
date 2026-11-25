@@ -383,6 +383,29 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         if (hasApps || hasWidgets) pagePendingDelete = index else deleteHomePage(index)
     }
 
+    fun removeAppFromHomePage(pageIndex: Int, packageName: String) {
+        if (pageIndex !in homePages.indices || packageName.isBlank()) return
+        val pages = homePages.map { it.toMutableList() }.toMutableList()
+        val page = pages[pageIndex]
+        if (page.isEmpty() && pageIndex == 0) {
+            page.addAll(List(8) { "-" } + defaultHomeApps.map { it.pkg })
+        }
+        val slot = page.indexOf(packageName)
+        if (slot < 0) return
+        page[slot] = "-"
+        val savedPages = pages.map { it.toList() }
+        val committed = ctx.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", savedPages.joinToString("~") { it.joinToString("|") })
+            .putString("packages", savedPages.firstOrNull().orEmpty().joinToString("|"))
+            .commit()
+        if (!committed) {
+            Toast.makeText(ctx, "No se pudo quitar la aplicación de esta página", Toast.LENGTH_LONG).show()
+            return
+        }
+        homePages = savedPages
+        homePackages = savedPages.getOrNull(currentPage).orEmpty()
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -923,6 +946,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 defaultPackages = defaultHomeApps.map { it.pkg },
                 widgetIdsByPage = launcherActivity?.hostedWidgetIds?.groupBy { id -> launcherActivity.hostedWidgetPages[id] ?: 0 }.orEmpty(),
                 onDeletePage = { requestDeleteHomePage(it) },
+                onRemoveApp = { pageIndex, packageName -> removeAppFromHomePage(pageIndex, packageName) },
                 onSelectPage = { page -> selectHomePage(page) },
                 onClose = { editingHome = false },
                 onWidget = {
@@ -1574,6 +1598,7 @@ private fun HomeEditOverview(
     defaultPackages: List<String>,
     widgetIdsByPage: Map<Int, List<Int>>,
     onDeletePage: (Int) -> Unit,
+    onRemoveApp: (Int, String) -> Unit,
     onSelectPage: (Int) -> Unit,
     onClose: () -> Unit,
     onWidget: () -> Unit,
@@ -1620,6 +1645,7 @@ private fun HomeEditOverview(
                     widgetIds = widgetIdsByPage[index].orEmpty(),
                     canDelete = pages.size > 1,
                     onDeletePage = { onDeletePage(index) },
+                    onRemoveApp = { packageName -> onRemoveApp(index, packageName) },
                     onClick = { onSelectPage(index) },
                     modifier = Modifier.fillMaxHeight(0.94f).width(205.dp)
                 )
@@ -1634,7 +1660,7 @@ private fun HomeEditOverview(
                 Text("i", color = Color(0xFFD6AE70), fontSize = 15.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(end = 10.dp))
                 Text(
-                    "Tocá una miniatura para elegirla. Usá × para quitar la página y Listo para volver.",
+                    "Tocá − junto a una app para quitarla. × borra la página; Listo vuelve al inicio.",
                     color = Cream.copy(alpha = 0.76f), fontSize = 11.sp, lineHeight = 14.sp,
                     modifier = Modifier.weight(1f), maxLines = 2, softWrap = true
                 )
@@ -1672,6 +1698,7 @@ private fun HomeMiniPagePreview(
     widgetIds: List<Int>,
     canDelete: Boolean,
     onDeletePage: () -> Unit,
+    onRemoveApp: (String) -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1750,11 +1777,26 @@ private fun HomeMiniPagePreview(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 when {
-                                    app != null -> Image(
-                                        app.icon, app.label,
-                                        Modifier.size(23.dp).clip(RoundedCornerShape(7.dp)),
-                                        contentScale = ContentScale.Crop
-                                    )
+                                    app != null -> Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                                        Image(
+                                            app.icon, app.label,
+                                            Modifier.size(23.dp).clip(RoundedCornerShape(7.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Box(
+                                            Modifier.align(Alignment.TopEnd).size(24.dp)
+                                                .testTag("remove-home-app-page-$index-${app.pkg}")
+                                                .semantics { contentDescription = "Quitar ${app.label} de la página ${index + 1}" }
+                                                .clickable { onRemoveApp(app.pkg) },
+                                            contentAlignment = Alignment.TopEnd
+                                        ) {
+                                            Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50), modifier = Modifier.size(15.dp)) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text("−", color = Color.White, fontSize = 11.sp, lineHeight = 11.sp)
+                                                }
+                                            }
+                                        }
+                                    }
                                     folderName != null -> {
                                         Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
                                             folderApps.take(2).forEach { pkg ->

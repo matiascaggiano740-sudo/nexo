@@ -101,6 +101,47 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun appsCanBeRemovedFromHomeAndCreatedPagesWithoutLosingOtherPages() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val appPackage = composeRule.activity.packageManager
+            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+            ?.activityInfo?.packageName
+        assertTrue("The emulator must provide a launchable app for the remove test", appPackage != null)
+        val packageName = appPackage ?: error("No launchable test app available")
+
+        val homePage = MutableList(28) { "-" }.apply { this[8] = packageName }
+        val createdPage = MutableList(28) { "-" }.apply { this[8] = packageName }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", listOf(homePage, createdPage).joinToString("~") { it.joinToString("|") })
+            .putString("packages", homePage.joinToString("|"))
+            .putInt("current_page", 0)
+            .commit()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("remove-home-app-page-1-$packageName").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        composeRule.onNodeWithTag("remove-home-app-page-1-$packageName").performClick()
+        composeRule.waitForIdle()
+        var pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
+            .getString("pages", "").orEmpty().split("~").map { it.split("|") }
+        assertEquals("Removing an app from a created page must clear only that slot", "-", pages[1][8])
+        assertEquals("Removing from another page must preserve the Home app", packageName, pages[0][8])
+
+        composeRule.onNodeWithTag("remove-home-app-page-0-$packageName").performClick()
+        composeRule.waitForIdle()
+        pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
+            .getString("pages", "").orEmpty().split("~").map { it.split("|") }
+        assertEquals("The Home app must be removed and saved", "-", pages[0][8])
+        assertEquals("The other page must stay intact", "-", pages[1][8])
+        assertEquals("Removing an app must not switch pages", 0,
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getInt("current_page", -1))
+    }
+
+    @Test
     fun longPressingHomeAppDoesNotEnterPageEdit() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val appPackage = composeRule.activity.packageManager

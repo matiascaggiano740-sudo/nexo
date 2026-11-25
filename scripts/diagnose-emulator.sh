@@ -157,6 +157,7 @@ methods=(
   drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned
   homeEditSettingsNoLongerOfferDoubleTapLock
   doubleTapEmptyHomeCellDoesNotTriggerLockFeature
+  appsCanBeRemovedFromHomeAndCreatedPagesWithoutLosingOtherPages
   widgetPickerShowsVisualPreviewCards
   longPressingHomeAppDoesNotEnterPageEdit
   swipeUpOnHomeOpensTheAppDrawer
