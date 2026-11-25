@@ -216,9 +216,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             bash -euo pipefail <<'BASH'
-            old_apk=$(find historical-artifact -path '*/outputs/apk/release/app-release.apk' -type f | head -n 1)
-            new_apk=app/build/outputs/apk/release/app-release.apk
-            test -s "$old_apk" && test -s "$new_apk"
+            echo "Workspace: $GITHUB_WORKSPACE"
+            echo "Historical APK files:"
+            find "$GITHUB_WORKSPACE/historical-artifact" -type f -name '*.apk' -print
+            old_apk=$(find "$GITHUB_WORKSPACE/historical-artifact" -type f -name '*.apk' -print -quit)
+            new_apk="$GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release.apk"
+            test -n "$old_apk" && test -s "$old_apk" || { echo 'Historical signed APK is missing from downloaded artifact.' >&2; exit 1; }
+            test -s "$new_apk" || { echo 'New Release APK is missing.' >&2; exit 1; }
             apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
             old_cert=$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
             new_cert=$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
