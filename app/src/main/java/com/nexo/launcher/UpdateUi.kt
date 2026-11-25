@@ -4,12 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -39,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -71,12 +68,12 @@ internal fun NexoSettingsDialog(
         scope.launch { delay(180); after() }
     }
     Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 30 },
-            exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { it / 35 }
+        val contentAlpha by animateFloatAsState(if (visible) 1f else 0f, tween(180), label = "settings-fade")
+        val contentOffset by animateFloatAsState(if (visible) 0f else 18f, tween(180), label = "settings-slide")
+        Surface(
+            Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha; translationY = contentOffset * density },
+            color = Color(0xFF171411), contentColor = Color(0xFFF3EEE4)
         ) {
-        Surface(Modifier.fillMaxSize(), color = Color(0xFF171411), contentColor = Color(0xFFF3EEE4)) {
             Column(
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
                     .padding(horizontal = 22.dp, vertical = 12.dp)
@@ -111,7 +108,6 @@ internal fun NexoSettingsDialog(
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
                 }
             }
-        }
         }
     }
 }
