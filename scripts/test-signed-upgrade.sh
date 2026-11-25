@@ -17,11 +17,17 @@ test "$old_cert" = "$EXPECTED_CERT_SHA256" || { echo 'Historical APK certificate
 test "$new_cert" = "$EXPECTED_CERT_SHA256" || { echo 'Candidate APK certificate mismatch.' >&2; exit 1; }
 adb install "$old_apk"
 adb install "$workspace/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+set +e
 seed_result="$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
-printf '%s\n' "$seed_result"
-echo "$seed_result" | grep -Fq 'OK (1 test)'
+seed_status=$?
+set -e
+printf 'Seed instrumentation exit code: %s\n%s\n' "$seed_status" "$seed_result"
+test "$seed_status" -eq 0 && echo "$seed_result" | grep -Fq 'OK (1 test)' || { echo 'Failed while seeding user data on historical APK.' >&2; exit 1; }
 adb install -r "$new_apk"
+set +e
 upgrade_result="$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
-printf '%s\n' "$upgrade_result"
-echo "$upgrade_result" | grep -Fq 'OK (1 test)'
+upgrade_status=$?
+set -e
+printf 'Upgrade instrumentation exit code: %s\n%s\n' "$upgrade_status" "$upgrade_result"
+test "$upgrade_status" -eq 0 && echo "$upgrade_result" | grep -Fq 'OK (1 test)' || { echo 'Failed while validating signed upgrade and persisted user data.' >&2; exit 1; }
 echo "Signed in-place update succeeded; user preferences survived. Certificate: $new_cert"
