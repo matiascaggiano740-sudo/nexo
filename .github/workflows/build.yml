@@ -94,10 +94,12 @@ jobs:
       - name: Ejecutar tests unitarios (reintentos por rate limit transitorio)
         shell: bash
         run: |
-          for attempt in 1 2 3; do
+          for attempt in 1 2 3 4 5; do
             if gradle testDebugUnitTest testReleaseUnitTest --no-daemon; then exit 0; else status=$?; fi
-            echo "Intento $attempt falló con código $status; reintentando tras una espera breve."
-            sleep $((attempt * 10))
+            if (( attempt == 5 )); then break; fi
+            wait_seconds=$((20 * (2 ** (attempt - 1))))
+            echo "Intento $attempt falló con código $status; reintento $((attempt + 1))/5 en ${wait_seconds}s para absorber rate limits transitorios."
+            sleep "$wait_seconds"
           done
           exit 1
         env:
