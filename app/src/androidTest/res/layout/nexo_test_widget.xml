@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/test_widget_label"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFF3EEE4"
+    android:gravity="center"
+    android:text="NEXO real widget"
+    android:textColor="#FF201F1D"
+    android:textSize="16sp" />

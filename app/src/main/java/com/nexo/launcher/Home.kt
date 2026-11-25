@@ -168,7 +168,11 @@ fun Home() {
     var pagePendingDelete by remember { mutableStateOf<Int?>(null) }
     var showHomeMoreActions by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
     var pendingImportText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (ctx.getSharedPreferences("nexo_updates", 0).getLong("pending_version", -1L) > 0L) showUpdateDialog = true
+    }
     var showLockAdminDialog by remember { mutableStateOf(false) }
     var showIconThemeDialog by remember { mutableStateOf(false) }
     var iconTheme by remember { mutableStateOf(savedIconTheme(ctx)) }
@@ -753,6 +757,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 })
                                 DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
                                 DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
+                                DropdownMenuItem(text = { Text("Ajustes · Actualizaciones") }, onClick = { showHomeMoreActions = false; showUpdateDialog = true })
                             }
                         }
                         HomeEditAction("Listo", onClick = { editingHome = false; showHomeMoreActions = false })
@@ -1037,6 +1042,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }) { Text("Revisar permiso") } },
         dismissButton = { TextButton(onClick = { showLockAdminDialog = false }) { Text("Ahora no") } }
     )
+    if (showUpdateDialog) UpdateDialog(onDismiss = { showUpdateDialog = false })
     if (showBackupDialog) AlertDialog(
         onDismissRequest = { showBackupDialog = false },
         title = { Text("Respaldo de NEXO") },

@@ -15,6 +15,7 @@ import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.longClick
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -72,22 +73,25 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(0)
+        val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
+        assertTrue("Deleting the empty page must persist only the remaining page", !savedPages.contains("~"))
         composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
     fun populatedPageDeletionRequiresConfirmation() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val appPackage = composeRule.activity.packageManager
+        val launchablePackages = composeRule.activity.packageManager
             .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
-            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
-            ?.activityInfo?.packageName
-        assertTrue("The emulator must provide a launchable app for page deletion test", appPackage != null)
-        val occupiedPage = MutableList(28) { "-" }.apply { this[8] = appPackage!! }
-        val emptyPage = MutableList(28) { "-" }
+            .map { it.activityInfo.packageName }
+            .filter { it != composeRule.activity.packageName }
+            .distinct()
+        assertTrue("The emulator must provide two launchable apps for page preservation test", launchablePackages.size >= 2)
+        val firstPage = MutableList(28) { "-" }.apply { this[8] = launchablePackages[0] }
+        val preservedPage = MutableList(28) { "-" }.apply { this[8] = launchablePackages[1] }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
-            .putString("pages", listOf(occupiedPage, emptyPage).joinToString("~") { it.joinToString("|") })
-            .putString("packages", occupiedPage.joinToString("|"))
+            .putString("pages", listOf(firstPage, preservedPage).joinToString("~") { it.joinToString("|") })
+            .putString("packages", firstPage.joinToString("|"))
             .apply()
         composeRule.activityRule.scenario.recreate()
         composeRule.waitUntil(10_000) {
@@ -104,9 +108,10 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
-        composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(1)
         val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
         assertTrue("Deleting a populated page should persist the remaining page", !savedPages.contains("~"))
+        assertTrue("Apps on pages not deleted must be preserved", savedPages.contains(launchablePackages[1]))
     }
 
     @Test
@@ -119,13 +124,28 @@ class HomeNavigationTest {
             .apply()
         composeRule.activityRule.scenario.recreate()
         val allocatedWidgetId = java.util.concurrent.atomic.AtomicInteger(-1)
-        composeRule.activityRule.scenario.onActivity { activity ->
-            val host = android.appwidget.AppWidgetHost(activity, 0x4E45584F)
-            val id = host.allocateAppWidgetId()
-            allocatedWidgetId.set(id)
-            activity.hostedWidgetIds.add(id)
-            activity.hostedWidgetPages[id] = 1
-            assertEquals("Test widget must be assigned to page 2", 1, activity.hostedWidgetPages[id])
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        try {
+            instrumentation.uiAutomation.adoptShellPermissionIdentity(android.Manifest.permission.BIND_APPWIDGET)
+            try {
+            composeRule.activityRule.scenario.onActivity { activity ->
+                val widgetManager = android.appwidget.AppWidgetManager.getInstance(activity)
+                val provider = widgetManager.installedProviders.firstOrNull {
+                    it.provider.className == TestWidgetProvider::class.java.name
+                }
+                assertTrue("The instrumentation APK must install the test widget provider", provider != null)
+                val host = android.appwidget.AppWidgetHost(activity, 0x4E45584F)
+                val id = host.allocateAppWidgetId()
+                allocatedWidgetId.set(id)
+                assertTrue("Android must bind the test ID to a real widget provider", widgetManager.bindAppWidgetIdIfAllowed(id, provider!!.provider))
+                assertEquals("Android must report the bound provider", provider.provider, widgetManager.getAppWidgetInfo(id)?.provider)
+                activity.hostedWidgetIds.add(id)
+                activity.hostedWidgetPages[id] = 1
+                assertEquals("Test widget must be assigned to page 2", 1, activity.hostedWidgetPages[id])
+                assertTrue("NEXO must create an AppWidgetHostView for the bound widget", activity.createWidgetHostView(id) != null)
+            }
+        } finally {
+            instrumentation.uiAutomation.dropShellPermissionIdentity()
         }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
@@ -141,8 +161,15 @@ class HomeNavigationTest {
         composeRule.activityRule.scenario.onActivity { activity ->
             assertTrue("Removed page widget must no longer be hosted", allocatedWidgetId.get() !in activity.hostedWidgetIds)
             assertTrue("Removed page widget must no longer have a page mapping", allocatedWidgetId.get() !in activity.hostedWidgetPages)
+            assertTrue("Android must release the deleted widget ID", android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(allocatedWidgetId.get()) == null)
         }
-        composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
+            composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).assertCountEquals(0)
+        } finally {
+            val id = allocatedWidgetId.get()
+            if (id >= 0) composeRule.activityRule.scenario.onActivity { activity ->
+                android.appwidget.AppWidgetHost(activity, 0x4E45584F).deleteAppWidgetId(id)
+            }
+        }
     }
 
     @Test

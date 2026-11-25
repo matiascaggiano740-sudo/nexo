@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseVersion = java.util.Properties().apply {
+    rootProject.file("version.properties").inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.nexo.launcher"
     compileSdk = 35
@@ -12,8 +16,8 @@ android {
         applicationId = "com.nexo.launcher"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1) + 100
-        versionName = "0.1"
+        versionCode = releaseVersion.getProperty("VERSION_CODE").toInt()
+        versionName = releaseVersion.getProperty("VERSION_NAME")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -55,6 +59,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.04.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
