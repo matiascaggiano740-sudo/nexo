@@ -120,7 +120,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
-            set -euo pipefail
+            bash -euo pipefail <<'BASH'
             old_apk=$(find historical-artifact -path '*/outputs/apk/release/app-release.apk' -type f | head -n 1)
             new_apk=app/build/outputs/apk/release/app-release.apk
             test -s "$old_apk" && test -s "$new_apk"
@@ -137,6 +137,7 @@ jobs:
             upgrade_result=$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)
             printf '%s\n' "$upgrade_result"
             echo "$upgrade_result" | grep -Fq 'OK (1 test)'
+            BASH
         env:
           EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
       - name: Publish signed APK and stable update manifest
