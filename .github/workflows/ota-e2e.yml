@@ -59,7 +59,19 @@ jobs:
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          gradle assembleRelease --no-daemon
+          retry_gradle() {
+            local attempt=1 status=0
+            while (( attempt <= 5 )); do
+              if gradle "$@" --no-daemon; then return 0; else status=$?; fi
+              if (( attempt == 5 )); then break; fi
+              sleep_seconds=$((20 * (2 ** (attempt - 1))))
+              echo "Gradle download/build attempt $attempt failed (exit $status); retrying after ${sleep_seconds}s for transient repository rate limits."
+              sleep "$sleep_seconds"
+              attempt=$((attempt + 1))
+            done
+            return "$status"
+          }
+          retry_gradle assembleRelease
           apk=app/build/outputs/apk/release/app-release.apk
           mkdir -p app/build/outputs/ota-fixtures app/src/androidTest/assets
           cp "$apk" app/build/outputs/ota-fixtures/ota-candidate-release.apk
@@ -78,14 +90,25 @@ jobs:
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          retry_gradle() {
+            local attempt=1 status=0
+            while (( attempt <= 5 )); do
+              if gradle "$@" --no-daemon; then return 0; else status=$?; fi
+              if (( attempt == 5 )); then break; fi
+              sleep_seconds=$((20 * (2 ** (attempt - 1))))
+              echo "Gradle download/build attempt $attempt failed (exit $status); retrying after ${sleep_seconds}s for transient repository rate limits."
+              sleep "$sleep_seconds"
+              attempt=$((attempt + 1))
+            done
+            return "$status"
+          }
           endpoint='http://127.0.0.1:8765/repos/matiascaggiano740-sudo/nexo/releases/latest'
-          gradle assembleDebug assembleDebugAndroidTest \
+          retry_gradle assembleDebug assembleDebugAndroidTest \
             -Pnexo.test.versionCode=1000 \
             -Pnexo.test.updateApiUrl="$endpoint" \
             -Pnexo.test.allowCleartext=true \
             -Pnexo.test.allowLoopbackHttp=true \
-            -Pnexo.test.signDebugWithRelease=true \
-            --no-daemon
+            -Pnexo.test.signDebugWithRelease=true
           base_apk=app/build/outputs/ota-fixtures/nexo-test-base-v1000.apk
           cp app/build/outputs/apk/debug/app-debug.apk "$base_apk"
           test_apk=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
