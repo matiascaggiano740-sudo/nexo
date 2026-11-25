@@ -23,10 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 8d9427a33f8bb20c7bb524a3df2715110bf7feac
+          ref: 99bbdb11f336c5a9333de53bf1e6160cbe53a361
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "8d9427a33f8bb20c7bb524a3df2715110bf7feac"
+        run: test "$(git rev-parse HEAD)" = "99bbdb11f336c5a9333de53bf1e6160cbe53a361"
 
       - name: Verify Bash 3.2 and syntax compatibility
         shell: bash
@@ -53,10 +53,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 8d9427a33f8bb20c7bb524a3df2715110bf7feac
+          ref: 99bbdb11f336c5a9333de53bf1e6160cbe53a361
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "8d9427a33f8bb20c7bb524a3df2715110bf7feac"
+        run: test "$(git rev-parse HEAD)" = "99bbdb11f336c5a9333de53bf1e6160cbe53a361"
 
       - name: Enable KVM group permissions
         run: |
@@ -224,16 +224,28 @@ jobs:
           badging=$("$aapt" dump badging "$apk" | sed -n '1p')
           echo "$badging" | grep -F "package: name='com.nexo.launcher' versionCode='$version_code' versionName='$version_name'"
           "$apksigner" verify --verbose "$apk"
-          signer=$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test "$version_code" = "1000"
+          test "$version_name" = "1.0.0"
+          "$apksigner" verify --print-certs "$apk" | tee candidate-signing-details.txt
+          signer=$(sed -n 's/.*certificate SHA-256 digest: //p' candidate-signing-details.txt | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$signer" = "$EXPECTED_CERT_SHA256" || { echo 'Release certificate mismatch; do not distribute this APK.' >&2; exit 1; }
-          config_file=$(find app/build/generated/source/buildConfig/release -name BuildConfig.java -o -name BuildConfig.kt | head -n 1)
+          config_file=$(find app/build/generated/source/buildConfig/release -name BuildConfig.java -print -quit)
           test -n "$config_file"
           grep -F 'NEXO_RELEASES_API_URL = "https://api.github.com/repos/matiascaggiano740-sudo/nexo/releases/latest"' "$config_file"
           grep -F 'NEXO_ALLOW_TEST_LOOPBACK_HTTP = false' "$config_file"
+          grep -F 'if (!BuildConfig.DEBUG || !BuildConfig.NEXO_ALLOW_TEST_LOOPBACK_HTTP) return false' app/src/main/java/com/nexo/launcher/UpdateManager.kt
+          manifest_root=app/build/intermediates/merged_manifest/release
+          manifest_count=0
+          while IFS= read -r manifest; do
+            test -n "$manifest" || continue
+            manifest_count=$((manifest_count + 1))
+            grep -F 'android:usesCleartextTraffic="false"' "$manifest"
+          done < <(find "$manifest_root" -type f -name AndroidManifest.xml -print)
+          test "$manifest_count" -gt 0
           mkdir -p candidate
           cp "$apk" candidate/app-release.apk
           {
-            echo 'source_commit=8d9427a33f8bb20c7bb524a3df2715110bf7feac'
+            echo 'source_commit=99bbdb11f336c5a9333de53bf1e6160cbe53a361 (configuration-only child of 8d9427a33f8bb20c7bb524a3df2715110bf7feac)'
             echo 'applicationId=com.nexo.launcher'
             echo "versionCode=$version_code"
             echo "versionName=$version_name"
@@ -242,7 +254,7 @@ jobs:
             echo "apk_sha256=$(sha256sum candidate/app-release.apk | awk '{print toupper($1)}')"
             echo "signing_certificate_sha256=$signer"
           } | tee candidate/metadata.txt
-          cp signing-details.txt candidate/signing-details.txt
+          cp candidate-signing-details.txt candidate/signing-details.txt
           cp <("$aapt" dump badging "$apk") candidate/aapt-badging.txt
 
       - name: Probar actualización firmada y persistencia en emulador desde APK histórico
