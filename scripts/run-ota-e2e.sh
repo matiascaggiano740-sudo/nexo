@@ -4,7 +4,7 @@ set -euo pipefail
 ARTIFACTS="$GITHUB_WORKSPACE/ota-e2e-artifacts"
 mkdir -p "$ARTIFACTS"
 APK="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/ota-candidate-release.apk"
-OLD="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/nexo-test-base-v999.apk"
+OLD="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/nexo-test-base-v1000.apk"
 TEST_APK="$GITHUB_WORKSPACE/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 SIGNED_TEST_APK="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/app-debug-androidTest-signed.apk"
 APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
@@ -74,14 +74,14 @@ PY
 done
 test "$confirmed" -eq 1 || { echo 'Could not find the Install/Update confirmation control in Android PackageInstaller UI.' >&2; exit 1; }
 
-echo 'Waiting for Android PackageInstaller to install versionCode=1000.' | tee -a "$ARTIFACTS/installer-confirmation.txt"
+echo 'Waiting for Android PackageInstaller to install versionCode=1001.' | tee -a "$ARTIFACTS/installer-confirmation.txt"
 for attempt in $(seq 1 60); do
   adb shell dumpsys package com.nexo.launcher > "$ARTIFACTS/installed-package-dump.txt" 2>&1 || true
-  if grep -Eq 'versionCode=1000([[:space:]]|$)' "$ARTIFACTS/installed-package-dump.txt"; then installed=1; break; fi
+  if grep -Eq 'versionCode=1001([[:space:]]|$)' "$ARTIFACTS/installed-package-dump.txt"; then installed=1; break; fi
   sleep 2
 done
 test "$installed" -eq 1 || { echo 'Android installer did not complete the OTA update.' >&2; exit 1; }
-echo 'Android PackageInstaller installed versionCode=1000.' | tee -a "$ARTIFACTS/installer-confirmation.txt"
+echo 'Android PackageInstaller installed versionCode=1001.' | tee -a "$ARTIFACTS/installer-confirmation.txt"
 
 adb shell dumpsys activity activities > "$ARTIFACTS/installer-activity-after-install.txt" || true
 # Run a fresh instrumented process against the updated app after Android killed the old activity.

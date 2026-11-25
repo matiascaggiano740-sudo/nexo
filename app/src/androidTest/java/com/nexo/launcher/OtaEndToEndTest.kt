@@ -89,11 +89,11 @@ class OtaEndToEndTest {
 
     private fun assertAvailableRelease() {
         composeRule.waitUntil(20_000) {
-            composeRule.onAllNodesWithText("Versión 1.0.0 · código 1000").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("Versión 1.0.0 · código 1001").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onAllNodesWithText("Publicada: 2026-11-25T09:00:00Z").assertCountEquals(1)
         composeRule.onAllNodesWithText("OTA E2E controlled release; no public release").assertCountEquals(1)
-        Log.i(TAG, "E2E: UI showed version 1.0.0/code 1000, publication date, and controlled changelog")
+        Log.i(TAG, "E2E: UI showed version 1.0.0/code 1001, publication date, and controlled changelog")
     }
 
     private fun topActivityDump(): String {
@@ -158,7 +158,7 @@ class OtaEndToEndTest {
                         path.startsWith("/assets/nexo-update.json") -> {
                             val hash = if (mode.get() == Mode.BAD_HASH) "00".repeat(32) else goodHash
                             val candidatePath = if (mode.get() == Mode.BAD_HASH) "/apk/candidate-bad-hash.apk" else "/apk/candidate-valid.apk"
-                            val json = """{"applicationId":"com.nexo.launcher","versionCode":1000,"versionName":"1.0.0","publishedAt":"2026-11-25T09:00:00Z","changelog":"OTA E2E controlled release; no public release","apkUrl":"$baseUrl$candidatePath","sha256":"$hash","signingCertificateSha256":"${UpdateManager.EXPECTED_CERT_SHA256}"}"""
+                            val json = """{"applicationId":"com.nexo.launcher","versionCode":1001,"versionName":"1.0.0","publishedAt":"2026-11-25T09:00:00Z","changelog":"OTA E2E controlled release; no public release","apkUrl":"$baseUrl$candidatePath","sha256":"$hash","signingCertificateSha256":"${UpdateManager.EXPECTED_CERT_SHA256}"}"""
                             respond(client, 200, "application/json", json.toByteArray())
                         }
                         path.startsWith("/apk/candidate-") -> {
@@ -200,7 +200,7 @@ class OtaPostInstallVerificationTest {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
         @Suppress("DEPRECATION")
         val version = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-        assertEquals(1000L, version)
+        assertEquals(1001L, version)
         Log.i("NexoOtaE2E", "POST-OTA: installed versionCode=$version and both user preference markers survived")
     }
 }

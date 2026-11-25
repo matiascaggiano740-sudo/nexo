@@ -6,6 +6,7 @@ on:
       - zapia/launcher-refresh
     paths:
       - .github/workflows/build.yml
+      - version.properties
       - app/src/main/java/com/nexo/launcher/Home.kt
       - app/src/main/java/com/nexo/launcher/MainActivity.kt
       - app/src/androidTest/java/com/nexo/launcher/HomeNavigationTest.kt
@@ -230,7 +231,7 @@ jobs:
           badging=$("$aapt" dump badging "$apk" | sed -n '1p')
           echo "$badging" | grep -F "package: name='com.nexo.launcher' versionCode='$version_code' versionName='$version_name'"
           "$apksigner" verify --verbose "$apk"
-          test "$version_code" = "1000"
+          test "$version_code" = "1001"
           test "$version_name" = "1.0.0"
           "$apksigner" verify --print-certs "$apk" | tee candidate-signing-details.txt
           signer=$(sed -n 's/.*certificate SHA-256 digest: //p' candidate-signing-details.txt | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')

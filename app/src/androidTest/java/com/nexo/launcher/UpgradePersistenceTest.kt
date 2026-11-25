@@ -27,6 +27,6 @@ class UpgradePersistenceTest {
         val info = targetContext.packageManager.getPackageInfo(targetContext.packageName, 0)
         @Suppress("DEPRECATION")
         val versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-        assertTrue("The installed candidate must be newer than the historical APK", versionCode > 279L)
+        assertEquals("The installed candidate must have versionCode 1001", 1001L, versionCode)
     }
 }
