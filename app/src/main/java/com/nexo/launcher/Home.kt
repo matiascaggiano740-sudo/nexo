@@ -1244,7 +1244,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     }
     if (showPageManager) PageManagerDialog(homePages, currentPage, launcherActivity?.hostedWidgetPages?.values?.toSet().orEmpty(),
         onDismiss = { showPageManager = false },
-        onSelect = { selectHomePage(it); showPageManager = false }
+        onSelect = { selectHomePage(it); showPageManager = false },
         onMove = { from, to ->
             if (from in homePages.indices && to in homePages.indices) {
                 val oldCurrent = currentPage
