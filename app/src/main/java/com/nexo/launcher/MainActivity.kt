@@ -17,6 +17,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import org.json.JSONArray
@@ -62,7 +64,22 @@ class MainActivity : ComponentActivity() {
         }
         widgetPrefs.edit().putString("ids", hostedWidgetIds.joinToString(","))
             .putString("pages", hostedWidgetPages.entries.joinToString(",") { "${it.key}:${it.value}" }).apply()
-        setContent { MaterialTheme { Home() } }
+        setContent {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = Color(0xFFD6AE70),
+                    onPrimary = Color(0xFF211B13),
+                    secondary = Color(0xFFC8AA7C),
+                    onSecondary = Color(0xFF211B13),
+                    background = Color(0xFF171411),
+                    onBackground = Color(0xFFF3EEE4),
+                    surface = Color(0xFF25211C),
+                    onSurface = Color(0xFFF3EEE4),
+                    surfaceVariant = Color(0xFF332E27),
+                    onSurfaceVariant = Color(0xFFD1C7B8)
+                )
+            ) { Home() }
+        }
     }
 
     /** Android paints the live/current system wallpaper behind a real Home activity. */

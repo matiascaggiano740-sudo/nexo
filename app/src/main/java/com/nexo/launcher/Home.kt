@@ -190,7 +190,6 @@ fun Home() {
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
     var pagePendingDelete by remember { mutableStateOf<Int?>(null) }
-    var showHomeMoreActions by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -647,7 +646,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             city = city,
                             modifier = Modifier.fillMaxWidth().height(headerHeight),
                             onLongPress = { editingHome = true },
-                            onWeatherClick = { editCity = true }
+                            onWeatherClick = { editCity = true },
+                            onSettings = { showSettingsDialog = true }
                         )
                     } else if (itemIndex <= pageWidgetIds.size) {
                         val widgetId = pageWidgetIds[itemIndex - 1]
@@ -836,50 +836,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             }
             }
 
-            if (editingHome) {
-                Surface(
-                    color = Color(0xD922201F),
-                    shape = RoundedCornerShape(26.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        HomeEditAction("Widget", onClick = { launcherActivity?.launchWidgetPicker(currentPage, pageAppCellCount) })
-                        HomeEditAction("Fondo", onClick = {
-                            runCatching { ctx.startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) }
-                                .onFailure { Toast.makeText(ctx, "No se pudo abrir la selección de fondo", Toast.LENGTH_SHORT).show() }
-                        })
-                        HomeEditAction("+ Página", onClick = {
-                            val expanded = (homePages + listOf(emptyList())).toMutableList()
-                            val newPage = expanded.lastIndex
-                            ctx.getSharedPreferences("nexo_home", 0).edit()
-                                .putString("pages", expanded.joinToString("~") { it.joinToString("|") })
-                                .putInt("current_page", newPage).apply()
-                            homePages = expanded
-                            selectHomePage(newPage)
-                        })
-                        HomeEditAction("+ Carpeta", onClick = { showNewFolder = true })
-                        Box {
-                            HomeEditAction("Más", onClick = { showHomeMoreActions = true }, testTag = "home-more-actions")
-                            DropdownMenu(expanded = showHomeMoreActions, onDismissRequest = { showHomeMoreActions = false }) {
-                                DropdownMenuItem(text = { Text("Administrar páginas") }, onClick = { showHomeMoreActions = false; showPageManager = true })
-                                DropdownMenuItem(text = { Text("Opciones de inicio de Android") }, onClick = {
-                                    showHomeMoreActions = false
-                                    launcherActivity?.requestDefaultHomeRole()
-                                })
-                                DropdownMenuItem(text = { Text("Iconos") }, onClick = { showHomeMoreActions = false; showIconThemeDialog = true })
-                                DropdownMenuItem(text = { Text("Respaldo") }, onClick = { showHomeMoreActions = false; showBackupDialog = true })
-                                DropdownMenuItem(modifier = Modifier.testTag("menu-open-nexo-settings"), text = { Text("Ajustes de NEXO") }, onClick = { showHomeMoreActions = false; showSettingsDialog = true })
-                            }
-                        }
-                        HomeEditAction("Listo", onClick = { editingHome = false; showHomeMoreActions = false })
-                    }
-                }
-            }
             if (homePages.size > 1) {
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 40.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 2.dp),
@@ -975,7 +931,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 widgetIdsByPage = launcherActivity?.hostedWidgetIds?.groupBy { id -> launcherActivity.hostedWidgetPages[id] ?: 0 }.orEmpty(),
                 onDeletePage = { requestDeleteHomePage(it) },
                 onSelectPage = { page -> selectHomePage(page) },
-                onClose = { editingHome = false; showHomeMoreActions = false },
+                onClose = { editingHome = false },
                 onWidget = {
                     val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) defaultHomeApps.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + 8 + if (currentPage == 0) 8 else 0
                     editingHome = false
@@ -996,8 +952,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     selectHomePage(newPage)
                 },
                 onFolder = { showNewFolder = true },
-                onManage = { editingHome = false; showPageManager = true },
-                onSettings = { editingHome = false; showSettingsDialog = true }
+                onIcons = { editingHome = false; showIconThemeDialog = true },
+                onManage = { editingHome = false; showPageManager = true }
             )
         }
         dragPreview?.let { (item, position) ->
@@ -1059,16 +1015,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         } },
         confirmButton = { TextButton(onClick = { showIconThemeDialog = false }) { Text("Cerrar") } }
     )
-    if (showLockAccessibilityDialog) AlertDialog(
-        onDismissRequest = { showLockAccessibilityDialog = false },
-        title = { Text("Doble toque para bloquear") },
-        text = { Text("Para que el teléfono use su bloqueo normal, como al pulsar el botón de encendido, Android requiere activar el Servicio de accesibilidad de NEXO. NEXO no lee el contenido de la pantalla; el servicio solo pide bloquear. Si activaste el permiso de administrador de la versión anterior, NEXO lo quita porque ya no se necesita. Podés desactivar Accesibilidad cuando quieras.") },
-        confirmButton = { TextButton(onClick = {
+    if (showLockAccessibilityDialog) NexoActionDialog(
+        glyph = "⌾",
+        title = "Doble toque para bloquear",
+        message = "Para que el teléfono use su bloqueo normal, como al pulsar el botón de encendido, Android requiere activar el Servicio de accesibilidad de NEXO. NEXO no consulta el contenido de la pantalla; el servicio solo solicita la acción de bloqueo. Si activaste el permiso de administrador de la versión anterior, NEXO lo quitará porque ya no se necesita. Podés desactivar Accesibilidad cuando quieras.",
+        confirmLabel = "Abrir Accesibilidad",
+        dismissLabel = "Ahora no",
+        onConfirm = {
             showLockAccessibilityDialog = false
             runCatching { launcherActivity?.openLockAccessibilitySettings() }
                 .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de Accesibilidad", Toast.LENGTH_LONG).show() }
-        }) { Text("Abrir Accesibilidad") } },
-        dismissButton = { TextButton(onClick = { showLockAccessibilityDialog = false }) { Text("Ahora no") } }
+        },
+        onDismiss = { showLockAccessibilityDialog = false }
     )
 
     if (showSettingsDialog) NexoSettingsDialog(
@@ -1421,20 +1379,28 @@ private fun HomeHeader(
     city: String,
     modifier: Modifier = Modifier,
     onLongPress: () -> Unit,
-    onWeatherClick: () -> Unit
+    onWeatherClick: () -> Unit,
+    onSettings: () -> Unit
 ) {
     BoxWithConstraints(modifier) {
         val clockFontSize = (maxHeight.value * 0.32f).coerceIn(34f, 58f).sp
         Column(Modifier.fillMaxSize().padding(top = 2.dp)) {
-        Text(
-            now.format(DateTimeFormatter.ofPattern("HH:mm")),
-            color = Color.White,
-            fontSize = clockFontSize,
-            maxLines = 1,
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Light,
-            modifier = Modifier.testTag("home-clock").combinedClickable(onClick = {}, onLongClick = onLongPress)
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                color = Color.White,
+                fontSize = clockFontSize,
+                maxLines = 1,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Light,
+                modifier = Modifier.weight(1f).testTag("home-clock").combinedClickable(onClick = {}, onLongClick = onLongPress)
+            )
+            Box(
+                Modifier.padding(end = 2.dp).size(42.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f)).testTag("open-nexo-settings")
+                    .clickable(onClick = onSettings), contentAlignment = Alignment.Center
+            ) { Text("⚙", color = Color(0xFFD6AE70), fontSize = 20.sp) }
+        }
         Text(date, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(4.dp))
         Surface(
@@ -1635,8 +1601,8 @@ private fun HomeEditOverview(
     onWallpaper: () -> Unit,
     onAddPage: () -> Unit,
     onFolder: () -> Unit,
-    onManage: () -> Unit,
-    onSettings: () -> Unit
+    onIcons: () -> Unit,
+    onManage: () -> Unit
 ) {
     Column(
         Modifier.fillMaxSize()
@@ -1680,24 +1646,33 @@ private fun HomeEditOverview(
                 )
             }
         }
-        Text(
-            "Tocá una miniatura para elegirla. Usá × para quitar una página y Listo para volver.",
-            color = Cream.copy(alpha = 0.68f), fontSize = 11.sp,
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
-            textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
-        )
+        Surface(
+            color = Color.White.copy(alpha = 0.055f),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp)
+        ) {
+            Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("i", color = Color(0xFFD6AE70), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(end = 10.dp))
+                Text(
+                    "Tocá una miniatura para elegirla. Usá × para quitar la página y Listo para volver.",
+                    color = Cream.copy(alpha = 0.76f), fontSize = 11.sp, lineHeight = 14.sp,
+                    modifier = Modifier.weight(1f), maxLines = 2, softWrap = true
+                )
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeEditActionCard("Widgets", "Elegir con vista previa", Modifier.weight(1f), onWidget, testTag = "edit-widgets")
-                HomeEditActionCard("Fondo", "Cambiar imagen", Modifier.weight(1f), onWallpaper, testTag = "edit-wallpaper")
+                HomeEditActionCard("▦", "Widgets", "Añadir al inicio", Modifier.weight(1f), onWidget, primary = true, testTag = "edit-widgets")
+                HomeEditActionCard("◒", "Fondo", "Cambiar fondo", Modifier.weight(1f), onWallpaper, testTag = "edit-wallpaper")
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeEditActionCard("+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage, testTag = "add-home-page")
-                HomeEditActionCard("+ Carpeta", "Agrupar aplicaciones", Modifier.weight(1f), onFolder, testTag = "edit-folder")
+                HomeEditActionCard("+", "+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage, testTag = "add-home-page")
+                HomeEditActionCard("▣", "+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder, testTag = "edit-folder")
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeEditActionCard("Páginas", "Administrar o quitar", Modifier.weight(1f), onManage, testTag = "edit-pages")
-                HomeEditActionCard("Ajustes", "Gestos y apariencia", Modifier.weight(1f), onSettings, testTag = "edit-settings")
+                HomeEditActionCard("◉", "Iconos", "Estilo de iconos", Modifier.weight(1f), onIcons, testTag = "icon-theme-open")
+                HomeEditActionCard("☷", "Páginas", "Ordenar o quitar", Modifier.weight(1f), onManage, testTag = "edit-pages")
             }
         }
     }
@@ -1721,7 +1696,7 @@ private fun HomeMiniPagePreview(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val outline = if (selected) Color(0xFFFFD37A) else Color.White.copy(alpha = 0.17f)
+    val outline = if (selected) Color(0xFFD6AE70) else Color.White.copy(alpha = 0.17f)
     val context = LocalContext.current
     val widgetPreviews = remember(widgetIds) {
         widgetIds.mapNotNull { id ->
@@ -1852,40 +1827,40 @@ private fun HomeMiniPagePreview(
 
 @Composable
 private fun HomeEditActionCard(
+    glyph: String,
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     compact: Boolean = false,
+    primary: Boolean = false,
     testTag: String? = null
 ) {
     Surface(
-        color = Color(0xFF29241E),
-        shape = RoundedCornerShape(21.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6AE70).copy(alpha = 0.18f)),
-        modifier = modifier.height(if (compact) 64.dp else 78.dp)
+        color = if (primary) Color(0xFF3A3022) else Color(0xFF26231F),
+        shape = RoundedCornerShape(22.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            if (primary) 1.5.dp else 1.dp,
+            if (primary) Color(0xFFD6AE70).copy(alpha = 0.58f) else Color.White.copy(alpha = 0.12f)
+        ),
+        shadowElevation = if (primary) 5.dp else 2.dp,
+        modifier = modifier.height(if (compact) 74.dp else 84.dp)
             .then(if (testTag == null) Modifier else Modifier.testTag(testTag)).clickable(onClick = onClick)
     ) {
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp)
         ) {
-            Text(title, color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = Color(0xFFD6AE70), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp))
+                .background(Color(0xFFD6AE70).copy(alpha = if (primary) 0.22f else 0.12f)), contentAlignment = Alignment.Center) {
+                Text(glyph, color = Color(0xFFD6AE70), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text(title, color = Cream, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                Text(subtitle, color = Cream.copy(alpha = 0.70f), fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, softWrap = true)
+            }
         }
-    }
-}
-
-@Composable
-private fun HomeEditAction(label: String, onClick: () -> Unit, testTag: String? = null) {
-    TextButton(
-        onClick = onClick,
-        modifier = if (testTag == null) Modifier else Modifier.testTag(testTag),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(22.dp)
-    ) {
-        Text(label, color = Color.White, fontSize = 12.sp, maxLines = 1)
     }
 }
 

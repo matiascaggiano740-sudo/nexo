@@ -4,6 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,6 +50,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.File
 
 @Composable
@@ -54,7 +62,19 @@ internal fun NexoSettingsDialog(
     onBackup: () -> Unit,
     onUpdates: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    var visible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { visible = true }
+    fun close(after: () -> Unit = onDismiss) {
+        visible = false
+        scope.launch { delay(180); after() }
+    }
+    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 30 },
+            exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { it / 35 }
+        ) {
         Surface(Modifier.fillMaxSize(), color = Color(0xFF171411), contentColor = Color(0xFFF3EEE4)) {
             Column(
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
@@ -65,27 +85,32 @@ internal fun NexoSettingsDialog(
                         Text("NEXO", color = Color(0xFFD6AE70), style = MaterialTheme.typography.labelLarge)
                         Text("Ajustes", color = Color(0xFFF3EEE4), fontSize = 28.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                     }
-                    TextButton(onClick = onDismiss, modifier = Modifier.testTag("close-nexo-settings")) { Text("Listo") }
+                    TextButton(onClick = { close() }, modifier = Modifier.testTag("close-nexo-settings")) { Text("Listo") }
                 }
                 Text("Tu inicio, a tu manera.", color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
                 Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(18.dp)) {
-                    SettingsSection("INICIO") {
-                        SettingsAction("Launcher predeterminado", "Elegí qué pantalla de inicio abre Android", "Abrir", "settings-default-home", onDefaultHome)
-                        SettingsAction("Gestos", "Doble toque para bloquear con el sistema de Android", "Configurar", "settings-lock", onLock)
+                    SettingsSection("LAUNCHER") {
+                        SettingsAction("⌂", "Launcher predeterminado", "Elegí qué inicio abre Android", "Abrir", "settings-default-home") { close(onDefaultHome) }
+                    }
+                    SettingsSection("RESPALDO") {
+                        SettingsAction("▤", "Copia de seguridad", "Guardá o restaurá tu inicio", "Abrir", "settings-backup") { close(onBackup) }
+                    }
+                    SettingsSection("ACTUALIZACIONES") {
+                        SettingsAction("↻", "Actualizaciones", "Consultá versión y novedades", "Buscar", "settings-updates") { close(onUpdates) }
+                    }
+                    SettingsSection("GESTOS") {
+                        SettingsAction("⌾", "Doble toque para bloquear", "Usá el bloqueo de Android", "Configurar", "settings-lock") { close(onLock) }
                     }
                     SettingsSection("APARIENCIA") {
-                        SettingsAction("Estilo de iconos", "Elegí el aspecto de los iconos de tus aplicaciones", "Cambiar", "settings-icons", onIcons)
-                    }
-                    SettingsSection("DATOS Y ACTUALIZACIONES") {
-                        SettingsAction("Respaldo", "Guardá o restaurá la distribución de NEXO", "Abrir", "settings-backup", onBackup)
-                        SettingsAction("Actualizaciones", "Consultá la versión y las novedades disponibles", "Buscar", "settings-updates", onUpdates)
+                        SettingsAction("◉", "Estilo de iconos", "Elegí el aspecto de tus apps", "Cambiar", "settings-icons") { close(onIcons) }
                     }
                     Text("Los permisos de Android se solicitan solo cuando activás una función que los necesita.",
                         color = Color(0xFF9E9589), style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
                 }
             }
+        }
         }
     }
 }
@@ -102,18 +127,58 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsAction(title: String, subtitle: String, action: String, tag: String, onClick: () -> Unit) {
+private fun SettingsAction(glyph: String, title: String, subtitle: String, action: String, tag: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag).padding(horizontal = 16.dp, vertical = 15.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).testTag(tag).padding(horizontal = 15.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = Color(0xFFF3EEE4), style = MaterialTheme.typography.titleSmall)
+        Surface(color = Color(0xFFD6AE70).copy(alpha = 0.13f), shape = RoundedCornerShape(14.dp), modifier = Modifier.size(42.dp)) {
+            androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                Text(glyph, color = Color(0xFFD6AE70), fontSize = 22.sp)
+            }
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(title, color = Color(0xFFF3EEE4), style = MaterialTheme.typography.titleSmall, maxLines = 2, softWrap = true)
             Text(subtitle, color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 3.dp))
+                modifier = Modifier.padding(top = 3.dp), maxLines = 2, softWrap = true)
         }
         Text(action, color = Color(0xFFD6AE70), style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(start = 12.dp))
+            modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+@Composable
+internal fun NexoActionDialog(
+    glyph: String,
+    title: String,
+    message: String,
+    confirmLabel: String,
+    dismissLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = Color(0xFF25211C),
+            contentColor = Color(0xFFF3EEE4),
+            shadowElevation = 14.dp
+        ) {
+            Column(Modifier.padding(22.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                Surface(color = Color(0xFFD6AE70).copy(alpha = 0.13f), shape = RoundedCornerShape(16.dp), modifier = Modifier.size(48.dp)) {
+                    androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                        Text(glyph, color = Color(0xFFD6AE70), fontSize = 24.sp)
+                    }
+                }
+                Text(title, color = Color(0xFFF3EEE4), style = MaterialTheme.typography.headlineSmall)
+                Text(message, color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodyMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    TextButton(onClick = onDismiss) { Text(dismissLabel) }
+                    TextButton(onClick = onConfirm, modifier = Modifier.testTag("nexo-action-confirm")) { Text(confirmLabel) }
+                }
+            }
+        }
     }
 }
 

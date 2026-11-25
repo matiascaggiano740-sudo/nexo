@@ -56,16 +56,22 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("add-home-page").assertExists()
         composeRule.onNodeWithTag("edit-folder").assertExists()
         composeRule.onNodeWithTag("edit-pages").assertExists()
-        composeRule.onNodeWithTag("edit-settings").assertExists()
-        composeRule.onNodeWithTag("edit-settings").performClick()
+        composeRule.onNodeWithTag("icon-theme-open").assertExists()
+        composeRule.onAllNodesWithTag("edit-settings").assertCountEquals(0)
+        composeRule.onNodeWithTag("finish-home-edit").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("open-nexo-settings").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("settings-lock").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag("settings-lock").assertExists()
         composeRule.onNodeWithTag("settings-default-home").assertExists()
         composeRule.onNodeWithTag("settings-updates").assertExists()
+        composeRule.onNodeWithTag("settings-backup").assertExists()
     }
 
     @Test
-    fun doubleTapEmptyHomeCellOffersSystemAccessibilitySetup() {
+    fun doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission() {
         val blankPage = List(28) { "-" }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", blankPage.joinToString("|"))
@@ -80,16 +86,12 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Doble toque para bloquear").assertExists()
         composeRule.onNodeWithText("Abrir Accesibilidad").assertExists()
-    }
-
-    @Test
-    fun lockAccessibilityServiceIsRegisteredWithoutScreenContentAccess() {
-        val info = composeRule.activity.packageManager.getServiceInfo(
+        val serviceInfo = composeRule.activity.packageManager.getServiceInfo(
             ComponentName(composeRule.activity, NexoLockAccessibilityService::class.java),
             PackageManager.GET_META_DATA
         )
-        assertEquals("android.permission.BIND_ACCESSIBILITY_SERVICE", info.permission)
-        assertTrue(info.metaData != null)
+        assertEquals("android.permission.BIND_ACCESSIBILITY_SERVICE", serviceInfo.permission)
+        assertTrue(serviceInfo.metaData != null)
     }
 
     @Test
@@ -459,10 +461,12 @@ class HomeNavigationTest {
 
     @Test
     fun updateCheckerIsReachableFromNexoSettings() {
-        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("open-nexo-settings").performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("settings-updates").performClick()
-        composeRule.onAllNodesWithText("Actualizaciones de NEXO").assertCountEquals(1)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Actualizaciones de NEXO").fetchSemanticsNodes().size == 1
+        }
     }
 
     @Test
