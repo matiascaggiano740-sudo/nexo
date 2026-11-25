@@ -1,7 +1,6 @@
 package com.nexo.launcher
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertExists
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
