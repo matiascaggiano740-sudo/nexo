@@ -1734,7 +1734,7 @@ private fun HomeMiniPagePreview(
                 }
                 Spacer(Modifier.height(3.dp))
             }
-            Column(Modifier.weight(1f).fillMaxWidth().testTag("page-preview-$index").clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f).fillMaxWidth().clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 repeat(if (index == 0) 3 else 5) { row ->
                     Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         repeat(4) { column ->

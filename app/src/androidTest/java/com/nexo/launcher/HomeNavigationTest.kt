@@ -131,8 +131,7 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("page-preview-1-widget-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
-                composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).assertCountEquals(1)
         composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
