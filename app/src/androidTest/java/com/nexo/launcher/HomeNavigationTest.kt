@@ -164,8 +164,9 @@ class HomeNavigationTest {
             saved.getOrNull(1)?.contains(appPackage!!) == true && composeRule.activity.getSharedPreferences("nexo_home", 0).getInt("current_page", -1) == 1
         }
         val pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~")
-        assertTrue("Moved app must no longer be on page 1", appPackage !in pages[0])
-        assertTrue("Moved app must be on page 2", appPackage in pages[1])
+        val movedPackage = appPackage!!
+        assertTrue("Moved app must no longer be on page 1", movedPackage !in pages[0])
+        assertTrue("Moved app must be on page 2", movedPackage in pages[1])
     }
 
     @Test
