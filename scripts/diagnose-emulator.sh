@@ -155,8 +155,8 @@ monitor_test() {
 
 methods=(
   drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned
-  homeEditShowsLargeDirectActionsAndDoubleTapLockIsDiscoverable
-  doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission
+  homeEditSettingsNoLongerOfferDoubleTapLock
+  doubleTapEmptyHomeCellDoesNotTriggerLockFeature
   widgetPickerShowsVisualPreviewCards
   longPressingHomeAppDoesNotEnterPageEdit
   swipeUpOnHomeOpensTheAppDrawer
