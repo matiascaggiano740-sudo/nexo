@@ -182,8 +182,19 @@ if ! adb_online "$DIAG/pre-build-adb-state.txt"; then
 fi
 
 echo "Building the debug app and instrumented APK before isolated test invocations."
-gradle assembleDebug assembleDebugAndroidTest --no-daemon > "$DIAG/assemble-debug-and-tests.log" 2>&1
-build_status=$?
+build_status=1
+attempt=1
+while (( attempt <= 3 )); do
+  gradle assembleDebug assembleDebugAndroidTest --no-daemon > "$DIAG/assemble-debug-and-tests-attempt-$attempt.log" 2>&1
+  build_status=$?
+  if (( build_status == 0 )); then
+    cp "$DIAG/assemble-debug-and-tests-attempt-$attempt.log" "$DIAG/assemble-debug-and-tests.log"
+    break
+  fi
+  echo "Gradle build attempt $attempt failed with exit $build_status; retrying after a short backoff."
+  sleep $((attempt * 10))
+  attempt=$((attempt + 1))
+done
 printf '%s\n' "$build_status" > "$DIAG/assemble-debug-and-tests-exit-code.txt"
 if (( build_status != 0 )); then
   echo "Gradle assembleDebug/assembleDebugAndroidTest failed; tests were not started."

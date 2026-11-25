@@ -70,8 +70,15 @@ jobs:
         run: |
           printf '%s' "$NEXO_KEYSTORE_BASE64" | base64 --decode > nexo-release-final.p12
 
-      - name: Ejecutar tests unitarios
-        run: gradle testDebugUnitTest testReleaseUnitTest --no-daemon
+      - name: Ejecutar tests unitarios (reintentos por rate limit transitorio)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if gradle testDebugUnitTest testReleaseUnitTest --no-daemon; then exit 0; else status=$?; fi
+            echo "Intento $attempt falló con código $status; reintentando tras una espera breve."
+            sleep $((attempt * 10))
+          done
+          exit 1
         env:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
