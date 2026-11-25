@@ -27,7 +27,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -49,7 +52,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -627,6 +629,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         cellHeight = cellHeight,
                         iconSize = iconSizing.iconSizeDp.dp,
                         onLongPress = { editingHome = true },
+                        onAppClick = { app?.let { runCatching { ctx.startActivity(it.intent) } } },
                         onDoubleTapEmpty = {
                             if (launcherActivity?.isLockAdminActive() == true) launcherActivity.lockDeviceNow()
                             else showLockAdminDialog = true
@@ -1592,10 +1595,7 @@ fun AppIcon(
                     )
                 }
             }
-        ) else Modifier.clickable {
-            onLaunch()
-            runCatching { ctx.startActivity(app.intent) }
-        })
+        ) else Modifier)
     Column(
         iconModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1964,6 +1964,7 @@ private fun HomeAppCell(
     cellHeight: Dp,
     iconSize: Dp,
     onLongPress: () -> Unit,
+    onAppClick: () -> Unit = {},
     onDoubleTapEmpty: () -> Unit = {},
     cellBounds: Map<Int, ComposeRect>,
     onCellBoundsChanged: (Int, ComposeRect) -> Unit,
@@ -1994,28 +1995,33 @@ private fun HomeAppCell(
                 onCellBoundsChanged(index, coordinates.boundsInRoot())
             }
             .then(if (dragPayload != null) Modifier.pointerInput(index, dragPayload) {
-                var rootPosition = Offset.Zero
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { position -> rootPosition = layoutCoordinates?.localToRoot(position) ?: position },
-                    onDrag = { change, _ ->
-                        change.consume()
-                        rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
-                    },
-                    onDragEnd = {
-                        val destination = cellBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(rootPosition) }?.key
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val longPress = awaitLongPressOrCancellation(down.id)
+                    if (longPress != null) {
+                        var rootPosition = layoutCoordinates?.localToRoot(longPress.position) ?: longPress.position
+                        drag(down.id) { change ->
+                            change.consume()
+                            rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
+                        }
+                        val destination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         if (destination != null) onDrop(dragPayload, destination)
+                    } else {
+                        val end = currentEvent.changes.firstOrNull { it.id == down.id } ?: down
+                        val elapsed = end.uptimeMillis - down.uptimeMillis
+                        val delta = end.position - down.position
+                        val distanceSquared = delta.x * delta.x + delta.y * delta.y
+                        val touchSlopSquared = viewConfiguration.touchSlop * viewConfiguration.touchSlop
+                        if (!end.pressed && elapsed < viewConfiguration.longPressTimeoutMillis && distanceSquared <= touchSlopSquared) {
+                            if (app != null) onAppClick() else onFolderClick()
+                        }
                     }
-                )
+                }
+            } else if (app == null && folderName == null) Modifier.pointerInput(index) {
+                detectTapGestures(onLongPress = { onLongPress() }, onDoubleTap = { onDoubleTapEmpty() })
             } else Modifier)
             .testTag("home-cell-$index")
             .clipToBounds()
-            .then(
-                if (app == null && folderName == null) {
-                    Modifier.pointerInput(index) {
-                        detectTapGestures(onLongPress = { onLongPress() }, onDoubleTap = { onDoubleTapEmpty() })
-                    }
-                } else Modifier
-            )
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
                     event.toAndroidDragEvent().clipDescription
