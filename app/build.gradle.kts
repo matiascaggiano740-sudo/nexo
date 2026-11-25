@@ -50,6 +50,9 @@ storeType = "PKCS12"
     buildTypes {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
+            // Release variants must never inherit loopback HTTP test configuration.
+            manifestPlaceholders["nexoAllowTestCleartext"] = "false"
+            buildConfigField("boolean", "NEXO_ALLOW_TEST_LOOPBACK_HTTP", "false")
         }
         getByName("debug") {
             if (signDebugWithReleaseForOtaTest) signingConfig = signingConfigs.getByName("release")
@@ -86,10 +89,38 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
+// Fail closed if any Release output is configured to allow cleartext/loopback HTTP.
+val verifyReleaseHttpSafety by tasks.registering {
+    dependsOn("processReleaseMainManifest", "generateReleaseBuildConfig")
+    doLast {
+        val buildConfigRoot = layout.buildDirectory.dir("generated/source/buildConfig/release").get().asFile
+        val buildConfig = buildConfigRoot.walkTopDown().firstOrNull { it.isFile && it.name == "BuildConfig.java" }
+            ?: error("Release BuildConfig.java was not generated")
+        val buildConfigText = buildConfig.readText()
+        check(Regex("NEXO_ALLOW_TEST_LOOPBACK_HTTP\\s*=\\s*false").containsMatchIn(buildConfigText)) {
+            "Release BuildConfig enables NEXO_ALLOW_TEST_LOOPBACK_HTTP"
+        }
+        check(buildConfigText.contains("NEXO_RELEASES_API_URL = \"https://api.github.com/repos/matiascaggiano740-sudo/nexo/releases/latest\"")) {
+            "Release updater endpoint is not the production HTTPS endpoint"
+        }
+
+        val manifestRoot = layout.buildDirectory.dir("intermediates/merged_manifest/release").get().asFile
+        val manifests = manifestRoot.walkTopDown().filter { it.isFile && it.name == "AndroidManifest.xml" }.toList()
+        check(manifests.isNotEmpty()) { "Merged Release manifest was not generated" }
+        manifests.forEach { manifest ->
+            val manifestText = manifest.readText()
+            check(Regex("android:usesCleartextTraffic\\s*=\\s*\"false\"").containsMatchIn(manifestText)) {
+                "Release manifest allows cleartext traffic: ${manifest.path}"
+            }
+        }
+    }
+}
+
 // A release APK is built only after the real Kotlin home-grid tests pass.
 tasks.configureEach {
     if (name == "assembleRelease") {
         dependsOn("testReleaseUnitTest")
         dependsOn("compileDebugAndroidTestKotlin")
+        dependsOn(verifyReleaseHttpSafety)
     }
 }
