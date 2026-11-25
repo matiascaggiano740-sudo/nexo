@@ -1,12 +1,12 @@
 package com.nexo.launcher
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertExists
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -291,7 +291,7 @@ class HomeNavigationTest {
         composeRule.onNodeWithText("Más").performClick()
         composeRule.onNodeWithText("Ajustes de NEXO").performClick()
         composeRule.onNodeWithTag("settings-updates").performClick()
-        composeRule.onNodeWithText("Actualizaciones de NEXO").assertExists()
+        composeRule.onAllNodesWithText("Actualizaciones de NEXO").assertCountEquals(1)
     }
 
     @Test

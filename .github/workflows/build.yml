@@ -240,7 +240,6 @@ jobs:
         with:
           name: NEXO-build-and-test-diagnostics
           path: |
-            app/build/outputs/apk/release/app-release.apk
             app/build/reports/androidTests/connected/debug/
             app/build/outputs/androidTest-results/connected/debug/
             app/build/diagnostics/

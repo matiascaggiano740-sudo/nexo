@@ -64,7 +64,9 @@ internal fun UpdateDialog(onDismiss: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableIntStateOf(0) }
     var update by remember { mutableStateOf<NexoUpdate?>(null) }
-    var downloaded by remember { mutableStateOf<File?>(null) }
+    var downloaded by remember {
+        mutableStateOf(context.getSharedPreferences("nexo_updates", 0).getString("downloaded_apk", null)?.let(::File)?.takeIf(File::exists))
+    }
     var message by remember { mutableStateOf("Consultando versiones publicadas…") }
 
     fun checkForUpdates() {
@@ -117,6 +119,8 @@ internal fun UpdateDialog(onDismiss: () -> Unit) {
                     val installed = runCatching { manager.installedVersionCode() }.getOrDefault(-1L)
                     prefs.edit().remove("pending_version").apply()
                     if (installed >= pending) {
+                        prefs.edit().remove("downloaded_apk").apply()
+                        downloaded = null
                         message = "Actualización instalada. NEXO está en versionCode $installed."
                         result = UpdateCheckResult.Current(installed)
                     } else message = "La instalación se canceló o no se completó; la versión actual se conserva."
@@ -150,8 +154,11 @@ internal fun UpdateDialog(onDismiss: () -> Unit) {
                 busy = true; error = null; progress = 0
                 scope.launch {
                     try {
-                        downloaded = manager.downloadAndVerify(selected) { progress = it }
-                        install(downloaded!!, selected.versionCode)
+                        val readyFile = downloaded ?: manager.downloadAndVerify(selected) { progress = it }.also {
+                            context.getSharedPreferences("nexo_updates", 0).edit().putString("downloaded_apk", it.absolutePath).apply()
+                        }
+                        downloaded = readyFile
+                        install(readyFile, selected.versionCode)
                     } catch (t: Throwable) { error = t.message ?: "No se pudo preparar la actualización." }
                     finally { busy = false }
                 }
