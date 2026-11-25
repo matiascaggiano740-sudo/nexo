@@ -10,6 +10,10 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: nexo-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   bash32-compat:
     name: Validate diagnostic script with macOS Bash 3.2
@@ -38,6 +42,7 @@ jobs:
     name: Build and instrumented emulator tests
     needs: bash32-compat
     runs-on: ubuntu-24.04
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
 
