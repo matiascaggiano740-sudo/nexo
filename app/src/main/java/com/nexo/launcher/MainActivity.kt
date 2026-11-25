@@ -4,11 +4,8 @@ import android.app.Activity
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
-import android.app.admin.DevicePolicyManager
 import android.appwidget.AppWidgetProviderInfo
 import android.app.role.RoleManager
-import android.content.ComponentName
-import android.provider.Settings
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -111,24 +108,6 @@ class MainActivity : ComponentActivity() {
         if (::widgetHost.isInitialized) widgetHost.stopListening()
         super.onStop()
     }
-
-    fun isLockAccessibilityEnabled(): Boolean {
-        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-        val target = ComponentName(this, NexoLockAccessibilityService::class.java).flattenToString()
-        return enabled.split(':').any { it.equals(target, ignoreCase = true) }
-    }
-
-    fun openLockAccessibilitySettings() {
-        // Retire the legacy Device Admin permission after the user chooses the replacement path.
-        runCatching {
-            val legacy = ComponentName(this, NexoDeviceAdminReceiver::class.java)
-            val policy = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            if (policy.isAdminActive(legacy)) policy.removeActiveAdmin(legacy)
-        }
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
-    fun lockDeviceNow(): Boolean = NexoLockAccessibilityService.lockScreen()
 
     fun requestDefaultHomeRole() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {

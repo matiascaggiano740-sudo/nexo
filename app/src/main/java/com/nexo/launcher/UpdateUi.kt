@@ -56,7 +56,6 @@ internal fun NexoSettingsDialog(
     onDismiss: () -> Unit,
     onDefaultHome: () -> Unit,
     onIcons: () -> Unit,
-    onLock: () -> Unit,
     onBackup: () -> Unit,
     onUpdates: () -> Unit
 ) {
@@ -96,9 +95,6 @@ internal fun NexoSettingsDialog(
                     }
                     SettingsSection("ACTUALIZACIONES") {
                         SettingsAction("↻", "Actualizaciones", "Consultá versión y novedades", "Buscar", "settings-updates") { close(onUpdates) }
-                    }
-                    SettingsSection("GESTOS") {
-                        SettingsAction("⌾", "Doble toque para bloquear", "Usá el bloqueo de Android", "Configurar", "settings-lock") { close(onLock) }
                     }
                     SettingsSection("APARIENCIA") {
                         SettingsAction("◉", "Estilo de iconos", "Elegí el aspecto de tus apps", "Cambiar", "settings-icons") { close(onIcons) }

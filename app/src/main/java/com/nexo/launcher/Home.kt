@@ -197,7 +197,6 @@ fun Home() {
     LaunchedEffect(Unit) {
         if (ctx.getSharedPreferences("nexo_updates", 0).getLong("pending_version", -1L) > 0L) showUpdateDialog = true
     }
-    var showLockAccessibilityDialog by remember { mutableStateOf(false) }
     var showIconThemeDialog by remember { mutableStateOf(false) }
     var iconTheme by remember { mutableStateOf(savedIconTheme(ctx)) }
     var drawer by remember { mutableStateOf(false) }
@@ -706,12 +705,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         iconSize = iconSizing.iconSizeDp.dp,
                         onLongPress = { editingHome = true },
                         onAppClick = { app?.let { runCatching { ctx.startActivity(it.intent) } } },
-                        onDoubleTapEmpty = {
-                            if (launcherActivity?.isLockAccessibilityEnabled() == true) {
-                                if (launcherActivity.lockDeviceNow()) Unit
-                                else Toast.makeText(ctx, "El servicio de bloqueo no está disponible. Revisá Accesibilidad de NEXO.", Toast.LENGTH_LONG).show()
-                            } else showLockAccessibilityDialog = true
-                        },
                         onRemove = { pkg ->
                             val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
                             val idx = slots.indexOf(pkg)
@@ -1015,25 +1008,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         } },
         confirmButton = { TextButton(onClick = { showIconThemeDialog = false }) { Text("Cerrar") } }
     )
-    if (showLockAccessibilityDialog) NexoActionDialog(
-        glyph = "⌾",
-        title = "Doble toque para bloquear",
-        message = "Para que el teléfono use su bloqueo normal, como al pulsar el botón de encendido, Android requiere activar el Servicio de accesibilidad de NEXO. NEXO no consulta el contenido de la pantalla; el servicio solo solicita la acción de bloqueo. Si activaste el permiso de administrador de la versión anterior, NEXO lo quitará porque ya no se necesita. Podés desactivar Accesibilidad cuando quieras.",
-        confirmLabel = "Abrir Accesibilidad",
-        dismissLabel = "Ahora no",
-        onConfirm = {
-            showLockAccessibilityDialog = false
-            runCatching { launcherActivity?.openLockAccessibilitySettings() }
-                .onFailure { Toast.makeText(ctx, "No se pudieron abrir los ajustes de Accesibilidad", Toast.LENGTH_LONG).show() }
-        },
-        onDismiss = { showLockAccessibilityDialog = false }
-    )
-
     if (showSettingsDialog) NexoSettingsDialog(
         onDismiss = { showSettingsDialog = false },
         onDefaultHome = { launcherActivity?.requestDefaultHomeRole() },
         onIcons = { showSettingsDialog = false; showIconThemeDialog = true },
-        onLock = { showSettingsDialog = false; showLockAccessibilityDialog = true },
         onBackup = { showSettingsDialog = false; showBackupDialog = true },
         onUpdates = { showSettingsDialog = false; showUpdateDialog = true }
     )
@@ -1943,7 +1921,6 @@ private fun HomeAppCell(
     iconSize: Dp,
     onLongPress: () -> Unit,
     onAppClick: () -> Unit = {},
-    onDoubleTapEmpty: () -> Unit = {},
     cellBounds: Map<Int, ComposeRect>,
     dockCellBounds: Map<Int, ComposeRect>,
     pageIndicatorBounds: Map<Int, ComposeRect>,
@@ -2013,7 +1990,7 @@ private fun HomeAppCell(
                     }
                 }
             } else if (app == null && folderName == null) Modifier.pointerInput(index) {
-                detectTapGestures(onLongPress = { onLongPress() }, onDoubleTap = { onDoubleTapEmpty() })
+                detectTapGestures(onLongPress = { onLongPress() })
             } else Modifier)
             .testTag("home-cell-$index")
             .clipToBounds()

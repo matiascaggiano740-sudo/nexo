@@ -4,7 +4,6 @@ import androidx.compose.ui.test.assertCountEquals
 import org.junit.Assert.assertTrue
 import android.content.pm.PackageManager
 import android.content.Intent
-import android.content.ComponentName
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -48,7 +47,7 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun homeEditShowsLargeDirectActionsAndDoubleTapLockIsDiscoverable() {
+    fun homeEditSettingsNoLongerOfferDoubleTapLock() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("edit-widgets").assertExists()
@@ -61,17 +60,14 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("finish-home-edit").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("open-nexo-settings").performClick()
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag("settings-lock").fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.onNodeWithTag("settings-lock").assertExists()
+        composeRule.onAllNodesWithTag("settings-lock").assertCountEquals(0)
         composeRule.onNodeWithTag("settings-default-home").assertExists()
         composeRule.onNodeWithTag("settings-updates").assertExists()
         composeRule.onNodeWithTag("settings-backup").assertExists()
     }
 
     @Test
-    fun doubleTapEmptyHomeCellOffersRequiredAndroidLockPermission() {
+    fun doubleTapEmptyHomeCellDoesNotTriggerLockFeature() {
         val blankPage = List(28) { "-" }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", blankPage.joinToString("|"))
@@ -84,14 +80,14 @@ class HomeNavigationTest {
         }
         composeRule.onNodeWithTag("home-cell-8", useUnmergedTree = true).performTouchInput { doubleClick() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Doble toque para bloquear").assertExists()
-        composeRule.onNodeWithText("Abrir Accesibilidad").assertExists()
-        val serviceInfo = composeRule.activity.packageManager.getServiceInfo(
-            ComponentName(composeRule.activity, NexoLockAccessibilityService::class.java),
-            PackageManager.GET_META_DATA
+        composeRule.onAllNodesWithText("Doble toque para bloquear").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Abrir Accesibilidad").assertCountEquals(0)
+        val packageInfo = composeRule.activity.packageManager.getPackageInfo(
+            composeRule.activity.packageName,
+            PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS
         )
-        assertEquals("android.permission.BIND_ACCESSIBILITY_SERVICE", serviceInfo.permission)
-        assertTrue(serviceInfo.metaData != null)
+        assertTrue(packageInfo.services.orEmpty().none { it.name.endsWith("NexoLockAccessibilityService") })
+        assertTrue(packageInfo.receivers.orEmpty().none { it.name.endsWith("NexoDeviceAdminReceiver") })
     }
 
     @Test
