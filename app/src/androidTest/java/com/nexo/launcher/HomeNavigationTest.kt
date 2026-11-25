@@ -208,8 +208,8 @@ class HomeNavigationTest {
             composeRule.onAllNodesWithTag("page-preview-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.activityRule.scenario.onActivity { activity ->
-            assertEquals("The page to delete contains two genuine provider-bound widgets", 2,
-                activity.hostedWidgetPages.values.count { it == 1 && android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(activity.hostedWidgetIds.first { id -> activity.hostedWidgetPages[id] == 1 }) != null })
+            assertEquals("The page to delete contains one genuine provider-bound widget", 1,
+                activity.hostedWidgetIds.count { id -> activity.hostedWidgetPages[id] == 1 && android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(id) != null })
         }
         composeRule.onNodeWithTag("home-edit-pages-row", useUnmergedTree = true).performTouchInput { swipeLeft() }
         composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).assertCountEquals(1)

@@ -27,6 +27,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -48,6 +49,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.zIndex
@@ -66,6 +69,9 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -161,6 +167,7 @@ fun Home() {
             ?.split("~")?.map { it.split("|").filter(String::isNotBlank) }
         mutableStateOf(savedPages ?: listOf(homePackages))
     }
+    val homeCellBounds = remember { mutableStateMapOf<Int, Rect>() }
     var currentPage by remember {
         mutableIntStateOf(ctx.getSharedPreferences("nexo_home", 0).getInt("current_page", 0).coerceAtLeast(0))
     }
@@ -643,6 +650,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             homePages = updatedPages
                             homePackages = slots
                         },
+                        cellBounds = homeCellBounds,
+                        onCellBoundsChanged = { cellIndex, bounds -> homeCellBounds[cellIndex] = bounds },
                         onDrop = { payload, targetIndex ->
                             val fromDock = payload.startsWith("dock:")
                             val draggedPkg = payload.removePrefix("home:").removePrefix("dock:")
@@ -1553,7 +1562,8 @@ fun AppIcon(
     onLongPress: (() -> Unit)? = null,
     onContextMenu: (() -> Unit)? = null,
     dragPayload: String? = null,
-    testTag: String? = null
+    testTag: String? = null,
+    longPressEnabled: Boolean = true
 ) {
     val ctx = LocalContext.current
     val dragView = LocalView.current
@@ -1561,7 +1571,7 @@ fun AppIcon(
     val iconModifier = Modifier
         .width(size + 12.dp)
         .then(if (testTag == null) Modifier else Modifier.testTag(testTag))
-        .combinedClickable(
+        .then(if (longPressEnabled) Modifier.combinedClickable(
             onClick = {
                 onLaunch()
                 runCatching { ctx.startActivity(app.intent) }
@@ -1582,7 +1592,10 @@ fun AppIcon(
                     )
                 }
             }
-        )
+        ) else Modifier.clickable {
+            onLaunch()
+            runCatching { ctx.startActivity(app.intent) }
+        })
     Column(
         iconModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1952,6 +1965,8 @@ private fun HomeAppCell(
     iconSize: Dp,
     onLongPress: () -> Unit,
     onDoubleTapEmpty: () -> Unit = {},
+    cellBounds: Map<Int, Rect>,
+    onCellBoundsChanged: (Int, Rect) -> Unit,
     onRemove: (String) -> Unit,
     onDrop: (String, Int) -> Unit
 ) {
@@ -1968,10 +1983,30 @@ private fun HomeAppCell(
         }
     }
 
+    val dragPayload = app?.let { "home:${it.pkg}" } ?: folderName?.let { "folder:$it" }
+    var layoutCoordinates by remember(index) { mutableStateOf<LayoutCoordinates?>(null) }
     Box(
         Modifier
             .fillMaxWidth()
             .height(cellHeight)
+            .onGloballyPositioned { coordinates ->
+                layoutCoordinates = coordinates
+                onCellBoundsChanged(index, coordinates.boundsInRoot())
+            }
+            .then(if (dragPayload != null) Modifier.pointerInput(index, dragPayload) {
+                var rootPosition = Offset.Zero
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { position -> rootPosition = layoutCoordinates?.localToRoot(position) ?: position },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
+                    },
+                    onDragEnd = {
+                        val destination = cellBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(rootPosition) }?.key
+                        if (destination != null) onDrop(dragPayload, destination)
+                    }
+                )
+            } else Modifier)
             .testTag("home-cell-$index")
             .clipToBounds()
             .then(
@@ -1996,7 +2031,7 @@ private fun HomeAppCell(
                 showLabel = homeIconSizing(cellHeight.value).showLabel,
                 labelFontSize = 11.sp,
                 testTag = "home-page-app",
-                dragPayload = "home:${app.pkg}"
+                longPressEnabled = false
             )
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
@@ -2005,7 +2040,7 @@ private fun HomeAppCell(
                 }
             }
         } else if (folderName != null) {
-            FolderIcon(folderName, folderApps, iconSize, onFolderClick, dragPayload = "folder:$folderName")
+            FolderIcon(folderName, folderApps, iconSize, onFolderClick)
             if (editingHome) {
                 Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove("folder:$folderName") }) {
