@@ -27,10 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 0b6d05b8b85f4e420b792a644777dca478dbd287
+          ref: d121ce340e69fe28b5b4e2cfe72199de38db47d9
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "0b6d05b8b85f4e420b792a644777dca478dbd287"
+        run: test "$(git rev-parse HEAD)" = "d121ce340e69fe28b5b4e2cfe72199de38db47d9"
 
       - name: Verify Bash 3.2 and syntax compatibility
         shell: bash
@@ -57,10 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 0b6d05b8b85f4e420b792a644777dca478dbd287
+          ref: d121ce340e69fe28b5b4e2cfe72199de38db47d9
 
       - name: Assert exact approved source checkout
-        run: test "$(git rev-parse HEAD)" = "0b6d05b8b85f4e420b792a644777dca478dbd287"
+        run: test "$(git rev-parse HEAD)" = "d121ce340e69fe28b5b4e2cfe72199de38db47d9"
 
       - name: Enable KVM group permissions
         run: |
@@ -249,7 +249,7 @@ jobs:
           mkdir -p candidate
           cp "$apk" candidate/app-release.apk
           {
-            echo 'source_commit=0b6d05b8b85f4e420b792a644777dca478dbd287 (launcher fixes based on tested NEXO branch)'
+            echo 'source_commit=d121ce340e69fe28b5b4e2cfe72199de38db47d9 (launcher fixes and test correction based on tested NEXO branch)'
             echo 'applicationId=com.nexo.launcher'
             echo "versionCode=$version_code"
             echo "versionName=$version_name"
