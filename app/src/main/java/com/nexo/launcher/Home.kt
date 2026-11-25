@@ -251,7 +251,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
     fun requestDeleteHomePage(index: Int) {
         if (index !in homePages.indices || homePages.size <= 1) return
-        pagePendingDelete = index
+        val hasApps = homePages[index].any { it.isNotBlank() && it != "-" } ||
+            (index == 0 && homePages[index].isEmpty() && defaultHomeApps.isNotEmpty())
+        val hasWidgets = launcherActivity?.hostedWidgetPages?.values?.any { it == index } == true
+        if (hasApps || hasWidgets) pagePendingDelete = index else deleteHomePage(index)
     }
 
     fun showShortcutsFor(app: AppItem) {
@@ -913,7 +916,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 weatherText = if (w != null) "${w.temp}° · ${w.label} · ${w.city}" else city.ifBlank { "Tocá para elegir ciudad" },
                 defaultPackages = defaultHomeApps.map { it.pkg },
                 widgetIdsByPage = launcherActivity?.hostedWidgetIds?.groupBy { id -> launcherActivity.hostedWidgetPages[id] ?: 0 }.orEmpty(),
-                onDeletePage = { deleteHomePage(it) },
+                onDeletePage = { requestDeleteHomePage(it) },
                 onSelectPage = { page -> currentPage = page; homePackages = homePages.getOrNull(page).orEmpty() },
                 onClose = { editingHome = false; showHomeMoreActions = false },
                 onWidget = {
@@ -1674,7 +1677,6 @@ private fun HomeMiniPagePreview(
     modifier: Modifier = Modifier
 ) {
     val outline = if (selected) Color(0xFFFFD37A) else Color.White.copy(alpha = 0.17f)
-    var pendingDelete by remember(index) { mutableStateOf(false) }
     val context = LocalContext.current
     val widgetPreviews = remember(widgetIds) {
         widgetIds.mapNotNull { id ->
@@ -1790,7 +1792,7 @@ private fun HomeMiniPagePreview(
         }
         if (canDelete) {
             IconButton(
-                onClick = { pendingDelete = true },
+                onClick = onDeletePage,
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(36.dp).zIndex(2f)
                     .testTag("delete-home-page-$index")
                     .semantics { contentDescription = "Borrar página ${index + 1}" }
@@ -1799,20 +1801,6 @@ private fun HomeMiniPagePreview(
                     Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 18.sp, lineHeight = 18.sp) }
                 }
             }
-        }
-        if (pendingDelete) {
-            val appCount = packages.count { it.isNotBlank() && it != "-" }
-            val widgetCount = widgetIds.size
-            AlertDialog(
-                onDismissRequest = { pendingDelete = false },
-                title = { Text("¿Borrar página ${index + 1}?") },
-                text = { Text("Esta página contiene $appCount aplicación(es) y $widgetCount widget(s). Se quitarán junto con la página.") },
-                confirmButton = { TextButton(modifier = Modifier.testTag("confirm-delete-home-page"), onClick = {
-                    pendingDelete = false
-                    onDeletePage()
-                }) { Text("Borrar página") } },
-                dismissButton = { TextButton(modifier = Modifier.testTag("cancel-delete-home-page"), onClick = { pendingDelete = false }) { Text("Cancelar") } }
-            )
         }
     }
 }
