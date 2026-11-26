@@ -69,6 +69,15 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("configure-home-icons").assertExists()
         composeRule.onNodeWithTag("configure-home-quote").assertExists()
         composeRule.onNodeWithTag("configure-home-settings").assertExists()
+        val pagesBounds = composeRule.onNodeWithTag("configure-home-pages").fetchSemanticsNode().boundsInRoot
+        val folderBounds = composeRule.onNodeWithTag("configure-home-folder").fetchSemanticsNode().boundsInRoot
+        val iconsBounds = composeRule.onNodeWithTag("configure-home-icons").fetchSemanticsNode().boundsInRoot
+        val quoteBounds = composeRule.onNodeWithTag("configure-home-quote").fetchSemanticsNode().boundsInRoot
+        val settingsBounds = composeRule.onNodeWithTag("configure-home-settings").fetchSemanticsNode().boundsInRoot
+        assertTrue("Panel buttons should use equal grid widths", kotlin.math.abs(pagesBounds.width - folderBounds.width) < 1f)
+        assertTrue("Second row should align with the first row", kotlin.math.abs(pagesBounds.left - iconsBounds.left) < 1f)
+        assertTrue("Right-side buttons should share a grid column", kotlin.math.abs(folderBounds.left - quoteBounds.left) < 1f)
+        assertTrue("Final single button should stay on the left grid column", kotlin.math.abs(pagesBounds.left - settingsBounds.left) < 1f)
         composeRule.onNodeWithTag("configure-home-quote").performClick()
         composeRule.onNodeWithText("Tu tarjeta").assertExists()
         composeRule.onNodeWithText("Cancelar").performClick()
