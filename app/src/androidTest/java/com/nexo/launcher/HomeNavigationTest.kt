@@ -12,6 +12,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
@@ -27,6 +29,33 @@ import org.junit.Test
 class HomeNavigationTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun iconSizeSettingsPreviewAndPersistTheSelectedScale() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val original = prefs.getFloat("home_icon_scale", DEFAULT_HOME_ICON_SCALE)
+        composeRule.onNodeWithTag("open-nexo-settings").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home-icon-size-slider").assertExists()
+        composeRule.onNodeWithTag("home-icon-size-preview").assertExists()
+
+        composeRule.onNodeWithTag("home-icon-size-slider")
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(0f) }
+        composeRule.waitForIdle()
+        val smaller = composeRule.onNodeWithTag("home-icon-preview-app-0-image").fetchSemanticsNode().boundsInRoot
+
+        composeRule.onNodeWithTag("home-icon-size-slider")
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(1f) }
+        composeRule.waitForIdle()
+        val larger = composeRule.onNodeWithTag("home-icon-preview-app-0-image").fetchSemanticsNode().boundsInRoot
+        assertTrue("Preview icon should grow as the slider moves right: small=$smaller large=$larger", larger.width > smaller.width)
+        assertTrue("Selected icon scale must be saved", prefs.getFloat("home_icon_scale", -1f) > 0.99f)
+
+        composeRule.onNodeWithTag("home-icon-size-slider")
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(original) }
+        composeRule.onNodeWithTag("close-nexo-settings").performClick()
+        composeRule.waitForIdle()
+    }
 
     @Test
     fun drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned() {

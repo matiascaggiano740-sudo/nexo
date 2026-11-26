@@ -5,17 +5,27 @@ package com.nexo.launcher
  * Cells 0..7 are the clock/weather header. Page 1 cells 20..27 hold the quote card.
  * Native widgets reserve complete rows immediately below the header.
  */
-internal data class HomeIconSizing(val iconSizeDp: Float, val showLabel: Boolean)
+internal const val DEFAULT_HOME_ICON_SCALE = 0.78f
 
-/** Fit the icon and optional label within a measured grid cell without drawing into its neighbor. */
-internal fun homeIconSizing(cellHeightDp: Float): HomeIconSizing {
+internal data class HomeIconSizing(
+    val iconSizeDp: Float,
+    val labelFontSizeSp: Float,
+    val labelTopGapDp: Float,
+    val showLabel: Boolean
+)
+
+/** Scale home icons and labels together, while fitting both inside the measured grid cell. */
+internal fun homeIconSizing(cellHeightDp: Float, scale: Float = DEFAULT_HOME_ICON_SCALE): HomeIconSizing {
     val height = cellHeightDp.coerceAtLeast(0f)
+    val normalized = scale.coerceIn(0f, 1f)
+    val labelFontSize = 10.5f + 4f * normalized
+    val labelGap = 8f - 2f * normalized
     val showLabel = height >= 72f
-    val textAndGap = if (showLabel) 24f else 8f
-    val maximumIcon = (height - textAndGap).coerceAtLeast(0f)
-    val icon = (height * 0.54f).coerceAtMost(maximumIcon).coerceAtMost(56f)
-        .coerceAtLeast(minOf(24f, maximumIcon))
-    return HomeIconSizing(icon, showLabel)
+    val textAndGap = if (showLabel) labelFontSize * 1.25f + labelGap else 8f
+    val maximumIcon = (height - textAndGap).coerceAtLeast(0f).coerceAtMost(68f)
+    val requestedIcon = height * (0.58f + 0.23f * normalized)
+    val icon = requestedIcon.coerceAtMost(maximumIcon).coerceAtLeast(minOf(24f, maximumIcon))
+    return HomeIconSizing(icon, labelFontSize, labelGap, showLabel)
 }
 
 internal const val HOME_GRID_GAP_DP = 8f

@@ -204,6 +204,10 @@ fun Home() {
     }
     var showIconThemeDialog by remember { mutableStateOf(false) }
     var iconTheme by remember { mutableStateOf(savedIconTheme(ctx)) }
+    var homeIconScale by remember {
+        mutableFloatStateOf(ctx.getSharedPreferences("nexo_home", 0)
+            .getFloat("home_icon_scale", DEFAULT_HOME_ICON_SCALE).coerceIn(0f, 1f))
+    }
     var drawer by remember { mutableStateOf(false) }
                 var editingHome by remember { mutableStateOf(false) }
 var lastPackageRefresh by remember { mutableStateOf(0) }
@@ -789,7 +793,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     val folderName = slot?.takeIf { it.startsWith("folder:") }?.removePrefix("folder:")
                     val folderApps = folderName?.let { name -> userFolders.find { it.first == name }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } } }.orEmpty()
                     val app = slot?.takeUnless { it.startsWith("folder:") }?.let { pkg -> apps.find { it.pkg == pkg } }
-                    val iconSizing = homeIconSizing(cellHeight.value)
+                    val iconSizing = homeIconSizing(cellHeight.value, homeIconScale)
                     HomeAppCell(
                         app = app,
                         folderName = folderName,
@@ -798,7 +802,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         index = logicalIndex,
                         editingHome = editingHome,
                         cellHeight = cellHeight,
-                        iconSize = iconSizing.iconSizeDp.dp,
+                        iconSizing = iconSizing,
                         onLongPress = { editingHome = true },
                         onAppClick = { if (!editingHome) app?.let { runCatching { ctx.startActivity(it.intent) } } },
                         onRemove = { pkg ->
@@ -973,6 +977,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         DockCell(
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                             app = dockApp,
+                            iconSize = (52f + 12f * homeIconScale).dp,
                             index = dockIndex,
                             editing = editingHome,
                             onBoundsChanged = { target, bounds -> dockCellBounds[target] = bounds },
@@ -1001,7 +1006,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 userFolders.find { it.first == key }?.second.orEmpty().mapNotNull { pkg -> apps.find { it.pkg == pkg } }
             } else emptyList()
             val userFolderName = name.removePrefix("user:").takeIf { name.startsWith("user:") }
-            FolderPanel(name.removePrefix("user:"), contents, close = { openFolder = null }, onEdit = {
+            val folderSizing = homeIconSizing(96f, homeIconScale)
+            FolderPanel(
+                name.removePrefix("user:"), contents,
+                close = { openFolder = null },
+                iconSize = folderSizing.iconSizeDp.dp,
+                labelFontSizeSp = folderSizing.labelFontSizeSp,
+                labelTopGapDp = folderSizing.labelTopGapDp,
+                onEdit = {
                 userFolderName?.let { folderName -> userFolders.find { it.first == folderName }?.let { folderEditor = it } }
                 openFolder = null
             })
@@ -1127,7 +1139,14 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         onDefaultHome = { launcherActivity?.requestDefaultHomeRole() },
         onIcons = { showSettingsDialog = false; showIconThemeDialog = true },
         onBackup = { showSettingsDialog = false; showBackupDialog = true },
-        onUpdates = { showSettingsDialog = false; showUpdateDialog = true }
+        onUpdates = { showSettingsDialog = false; showUpdateDialog = true },
+        previewApps = apps.take(9),
+        homeCellHeightDp = launcherActivity?.homeCellHeightDp?.floatValue?.takeIf { it > 0f } ?: 80f,
+        iconScale = homeIconScale,
+        onIconScaleChange = { scale ->
+            homeIconScale = scale.coerceIn(0f, 1f)
+            ctx.getSharedPreferences("nexo_home", 0).edit().putFloat("home_icon_scale", homeIconScale).apply()
+        }
     )
     if (showUpdateDialog) UpdateDialog(onDismiss = { showUpdateDialog = false })
     if (showBackupDialog) AlertDialog(
@@ -1539,7 +1558,12 @@ fun QuoteCard(
 }
 
 @Composable
-fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit, dragPayload: String? = null) {
+fun FolderIcon(
+    name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
+    dragPayload: String? = null,
+    labelFontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
+    labelTopGap: Dp = 6.dp
+) {
     val dragView = LocalView.current
     val density = LocalDensity.current.density
     val previewIconSize = ((size - 10.dp) / 3).coerceAtLeast(12.dp)
@@ -1568,13 +1592,17 @@ fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
                 }
             }
         }
-        Text(name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+        Text(name, color = Color.White, fontSize = labelFontSize, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center, modifier = Modifier.padding(top = labelTopGap))
     }
 }
 
 @Composable
-fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit, onEdit: (() -> Unit)? = null) {
+fun FolderPanel(
+    name: String, apps: List<AppItem>, close: () -> Unit,
+    iconSize: Dp = 56.dp, labelFontSizeSp: Float = 11f, labelTopGapDp: Float = 9f,
+    onEdit: (() -> Unit)? = null
+) {
     Box(
         Modifier.fillMaxSize().background(Color(0x99201810)).pointerInput(Unit) { detectTapGestures { close() } },
         contentAlignment = Alignment.Center,
@@ -1600,8 +1628,11 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit, onEdit: ((
             ) {
                 apps.chunked(3).forEach { row ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        row.forEach { AppIcon(it, 56.dp, Brown, onLaunch = close) }
-                        repeat(3 - row.size) { Spacer(Modifier.width(68.dp)) }
+                        row.forEach {
+                            AppIcon(it, iconSize, Brown, onLaunch = close,
+                                labelFontSize = labelFontSizeSp.sp, labelTopGap = labelTopGapDp.dp)
+                        }
+                        repeat(3 - row.size) { Spacer(Modifier.width(iconSize + 12.dp)) }
                     }
                 }
             }
@@ -1632,6 +1663,7 @@ fun AppIcon(
     textColor: Color,
     showLabel: Boolean = true,
     labelFontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
+    labelTopGap: Dp = 9.dp,
     onLaunch: () -> Unit = {},
     onLongPress: (() -> Unit)? = null,
     onContextMenu: (() -> Unit)? = null,
@@ -1683,7 +1715,7 @@ fun AppIcon(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 9.dp)
+                modifier = Modifier.padding(top = labelTopGap)
             )
         }
     }
@@ -2143,7 +2175,7 @@ private fun HomePageIndicator(
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun DockCell(
-    modifier: Modifier, app: AppItem?, index: Int, editing: Boolean,
+    modifier: Modifier, app: AppItem?, index: Int, editing: Boolean, iconSize: Dp,
     onBoundsChanged: (Int, ComposeRect) -> Unit,
     onRemove: () -> Unit, onDrop: (String) -> Unit
 ) {
@@ -2162,7 +2194,7 @@ private fun DockCell(
         shouldStartDragAndDrop = { event -> event.toAndroidDragEvent().clipDescription
             ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true }, target = target
     ), contentAlignment = Alignment.Center) {
-        if (app != null) AppIcon(app, 52.dp, Color.White, showLabel = false,
+        if (app != null) AppIcon(app, iconSize, Color.White, showLabel = false,
             dragPayload = "dock:${app.pkg}", testTag = "dock-app-${app.pkg}")
         if (editing && app != null) Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
             modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { onRemove() }) {
@@ -2181,7 +2213,7 @@ private fun HomeAppCell(
     index: Int,
     editingHome: Boolean,
     cellHeight: Dp,
-    iconSize: Dp,
+    iconSizing: HomeIconSizing,
     onLongPress: () -> Unit,
     onAppClick: () -> Unit = {},
     cellBounds: Map<Int, ComposeRect>,
@@ -2272,9 +2304,10 @@ private fun HomeAppCell(
     ) {
         if (app != null) {
             AppIcon(
-                app, iconSize, Color.White,
-                showLabel = homeIconSizing(cellHeight.value).showLabel,
-                labelFontSize = 11.sp,
+                app, iconSizing.iconSizeDp.dp, Color.White,
+                showLabel = iconSizing.showLabel,
+                labelFontSize = iconSizing.labelFontSizeSp.sp,
+                labelTopGap = iconSizing.labelTopGapDp.dp,
                 testTag = "home-page-app",
                 longPressEnabled = false,
                 modifier = Modifier.graphicsLayer { alpha = if (isDragged) 0.28f else 1f }
@@ -2286,7 +2319,11 @@ private fun HomeAppCell(
                 }
             }
         } else if (folderName != null) {
-            FolderIcon(folderName, folderApps, iconSize, onFolderClick)
+            FolderIcon(
+                folderName, folderApps, iconSizing.iconSizeDp.dp, onFolderClick,
+                labelFontSize = iconSizing.labelFontSizeSp.sp,
+                labelTopGap = iconSizing.labelTopGapDp.dp
+            )
             if (editingHome) {
                 Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).testTag("home-remove-folder-$index-$folderName").clickable { onRemove("folder:$folderName") }) {

@@ -6,14 +6,20 @@ import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -21,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -57,7 +65,11 @@ internal fun NexoSettingsDialog(
     onDefaultHome: () -> Unit,
     onIcons: () -> Unit,
     onBackup: () -> Unit,
-    onUpdates: () -> Unit
+    onUpdates: () -> Unit,
+    previewApps: List<AppItem>,
+    homeCellHeightDp: Float,
+    iconScale: Float,
+    onIconScaleChange: (Float) -> Unit
 ) {
     var visible by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -87,6 +99,15 @@ internal fun NexoSettingsDialog(
                 Text("Tu inicio, a tu manera.", color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
                 Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(18.dp)) {
+                    SettingsSection("APARIENCIA") {
+                        SettingsAction("◉", "Estilo de iconos", "Elegí el aspecto de tus apps", "Cambiar", "settings-icons") { close(onIcons) }
+                        HomeIconSizeSettings(
+                            previewApps = previewApps,
+                            homeCellHeightDp = homeCellHeightDp,
+                            iconScale = iconScale,
+                            onIconScaleChange = onIconScaleChange
+                        )
+                    }
                     SettingsSection("LAUNCHER") {
                         SettingsAction("⌂", "Launcher predeterminado", "Elegí qué inicio abre Android", "Abrir", "settings-default-home") { close(onDefaultHome) }
                     }
@@ -96,14 +117,85 @@ internal fun NexoSettingsDialog(
                     SettingsSection("ACTUALIZACIONES") {
                         SettingsAction("↻", "Actualizaciones", "Consultá versión y novedades", "Buscar", "settings-updates") { close(onUpdates) }
                     }
-                    SettingsSection("APARIENCIA") {
-                        SettingsAction("◉", "Estilo de iconos", "Elegí el aspecto de tus apps", "Cambiar", "settings-icons") { close(onIcons) }
-                    }
                     Text("Los permisos de Android se solicitan solo cuando activás una función que los necesita.",
                         color = Color(0xFF9E9589), style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeIconSizeSettings(
+    previewApps: List<AppItem>,
+    homeCellHeightDp: Float,
+    iconScale: Float,
+    onIconScaleChange: (Float) -> Unit
+) {
+    val sizing = homeIconSizing(homeCellHeightDp, iconScale)
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Tamaño de iconos", color = Color(0xFFF3EEE4), style = MaterialTheme.typography.titleSmall)
+        Text("Agrandá o achicá iconos y nombres juntos.", color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodySmall)
+        Surface(
+            Modifier.fillMaxWidth().testTag("home-icon-size-preview"),
+            color = Color(0xFF171411),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            if (previewApps.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    previewApps.take(2).forEachIndexed { index, app ->
+                        Column(
+                            Modifier.width(sizing.iconSizeDp.dp + 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Image(
+                                app.icon, app.label,
+                                Modifier.size(sizing.iconSizeDp.dp)
+                                    .testTag("home-icon-preview-app-$index-image"),
+                                contentScale = ContentScale.Crop
+                            )
+                            Text(
+                                app.label, color = Color.White,
+                                fontSize = sizing.labelFontSizeSp.sp,
+                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.padding(top = sizing.labelTopGapDp.dp)
+                            )
+                        }
+                    }
+                    FolderIcon(
+                        "Carpeta", previewApps.take(9), sizing.iconSizeDp.dp, onClick = {},
+                        labelFontSize = sizing.labelFontSizeSp.sp,
+                        labelTopGap = sizing.labelTopGapDp.dp
+                    )
+                }
+            } else {
+                Text("La vista previa aparece cuando hay aplicaciones disponibles.",
+                    color = Color(0xFFBDB4A7), modifier = Modifier.padding(16.dp))
+            }
+        }
+        Text(
+            "Vista previa en Inicio: ${sizing.iconSizeDp.toInt()} dp · texto ${sizing.labelFontSizeSp.toInt()} sp",
+            color = Color(0xFFBDB4A7), style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("home-icon-size-value")
+        )
+        Slider(
+            value = iconScale.coerceIn(0f, 1f),
+            onValueChange = onIconScaleChange,
+            valueRange = 0f..1f,
+            modifier = Modifier.fillMaxWidth().testTag("home-icon-size-slider")
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Más chicos", color = Color(0xFFBDB4A7), style = MaterialTheme.typography.labelSmall)
+            Text("Más grandes", color = Color(0xFFBDB4A7), style = MaterialTheme.typography.labelSmall)
         }
     }
 }

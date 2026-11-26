@@ -98,14 +98,16 @@ class HomeGridTest {
         assertTrue(compact.iconSizeDp + 8f <= 60f)
 
         val regular = homeIconSizing(88f)
+        val compactRegular = homeIconSizing(88f, 0f)
         assertTrue(regular.showLabel)
-        assertTrue(regular.iconSizeDp + 24f <= 88f)
-        assertEquals(47.52f, regular.iconSizeDp, 0.01f)
+        assertTrue(regular.iconSizeDp > compactRegular.iconSizeDp)
+        assertTrue(regular.labelFontSizeSp > compactRegular.labelFontSizeSp)
+        assertTrue(regular.iconSizeDp + regular.labelTopGapDp + regular.labelFontSizeSp * 1.25f <= 88.01f)
 
-        val tall = homeIconSizing(110f)
+        val tall = homeIconSizing(110f, 1f)
         assertTrue(tall.showLabel)
-        assertEquals(56f, tall.iconSizeDp, 0.01f)
-        assertTrue(tall.iconSizeDp + 24f <= 110f)
+        assertEquals(68f, tall.iconSizeDp, 0.01f)
+        assertTrue(tall.iconSizeDp + tall.labelTopGapDp + tall.labelFontSizeSp * 1.25f <= 110f)
     }
 
     @Test
