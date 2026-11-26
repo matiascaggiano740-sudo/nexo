@@ -945,7 +945,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 Surface(
                     color = Color(0xA62D2B2A),
                     shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.widthIn(min = 112.dp).height(34.dp)
+                    modifier = Modifier.width(112.dp).height(34.dp)
                         .testTag("open-app-drawer").clickable { drawer = true }
                 ) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 12.dp),

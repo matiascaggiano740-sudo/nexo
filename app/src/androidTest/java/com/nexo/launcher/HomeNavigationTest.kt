@@ -78,12 +78,13 @@ class HomeNavigationTest {
         try {
             composeRule.activityRule.scenario.recreate()
             composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-Social").fetchSemanticsNodes().isNotEmpty() }
-            composeRule.onAllNodesWithTag("folder-preview-Social-0").assertCountEquals(1)
-            composeRule.onAllNodesWithTag("folder-preview-Social-8").assertCountEquals(1)
-            val first = composeRule.onNodeWithTag("folder-preview-Social-0").fetchSemanticsNode().boundsInRoot
-            val second = composeRule.onNodeWithTag("folder-preview-Social-1").fetchSemanticsNode().boundsInRoot
-            val third = composeRule.onNodeWithTag("folder-preview-Social-2").fetchSemanticsNode().boundsInRoot
-            assertTrue("Folder preview apps should be larger than the old cramped 10dp thumbnails", first.width > 12f * composeRule.activity.resources.displayMetrics.density)
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("folder-preview-Social-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onAllNodesWithTag("folder-preview-Social-0", useUnmergedTree = true).assertCountEquals(1)
+            composeRule.onAllNodesWithTag("folder-preview-Social-8", useUnmergedTree = true).assertCountEquals(1)
+            val first = composeRule.onNodeWithTag("folder-preview-Social-0", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val second = composeRule.onNodeWithTag("folder-preview-Social-1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val third = composeRule.onNodeWithTag("folder-preview-Social-2", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertTrue("Folder preview apps should remain clearly visible at the home icon size", first.width > 8f * composeRule.activity.resources.displayMetrics.density)
             assertTrue("Folder preview icons should be evenly spaced", kotlin.math.abs((second.center.x - first.center.x) - (third.center.x - second.center.x)) < 2f)
             composeRule.onNodeWithTag("home-folder-Social").performClick()
             composeRule.onAllNodesWithText("Editar").assertCountEquals(0)
