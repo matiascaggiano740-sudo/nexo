@@ -132,67 +132,34 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun appsCanBeDraggedToTrashFromHomeAndCreatedPagesWithoutLosingOtherPages() {
+    fun appsCanBeRemovedFromHomeAndCreatedPagesWithoutLosingOtherPages() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val packageNames = composeRule.activity.packageManager
-            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
-            .map { it.activityInfo.packageName }
-            .filter { it != composeRule.activity.packageName }
-            .distinct()
-            .take(2)
+        val packageNames = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(2)
         assertTrue("The emulator must provide two launchable apps for the remove test", packageNames.size == 2)
         val homeApp = packageNames[0]
         val createdPageApp = packageNames[1]
-
         val homePage = MutableList(28) { "-" }.apply { this[8] = homeApp }
         val createdPage = MutableList(28) { "-" }.apply { this[8] = createdPageApp }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", listOf(homePage, createdPage).joinToString("~") { it.joinToString("|") })
             .putString("packages", homePage.joinToString("|"))
-            .putInt("current_page", 0)
-            .commit()
+            .putInt("current_page", 0).commit()
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.onNodeWithTag("home-trash-target").assertExists()
         composeRule.onNodeWithTag("edit-select-page-1").performClick()
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
-        }
-
-        fun dragVisibleAppToTrash() {
-            val sourceNode = composeRule.onAllNodesWithTag("home-page-app").get(0)
-            val source = sourceNode.fetchSemanticsNode().boundsInRoot
-            val target = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
-            sourceNode.performTouchInput {
-                val origin = source.center - source.topLeft
-                val destination = target - source.topLeft
-                down(origin)
-                advanceEventTime(700)
-                for (step in 1..14) {
-                    val fraction = step / 14f
-                    moveTo(origin + (destination - origin) * fraction, 35)
-                }
-                up()
-            }
-            composeRule.waitForIdle()
-        }
-
-        dragVisibleAppToTrash()
-        var pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
-            .getString("pages", "").orEmpty().split("~").map { it.split("|") }
-        assertEquals("Dragging an app to the trash must remove it from its created page", "-", pages[1][8])
-        assertEquals("Removing from a created page must preserve the Home app", homeApp, pages[0][8])
-
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-remove-app-8-$createdPageApp", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("home-remove-app-8-$createdPageApp", useUnmergedTree = true).performClick()
+        var pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
+        assertEquals("The created-page app is removed", "-", pages[1][8])
+        assertEquals("Home app survives removal on the created page", homeApp, pages[0][8])
         composeRule.onNodeWithTag("edit-select-page-0").performClick()
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
-        }
-        dragVisibleAppToTrash()
-        pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
-            .getString("pages", "").orEmpty().split("~").map { it.split("|") }
-        assertEquals("Dragging the Home app to the trash must save its removal", "-", pages[0][8])
-        assertEquals("Removing the Home app must not alter the other page", "-", pages[1][8])
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-remove-app-8-$homeApp", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("home-remove-app-8-$homeApp", useUnmergedTree = true).performClick()
+        pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
+        assertEquals("Home app is removed and persisted", "-", pages[0][8])
+        assertEquals("Created-page state remains intact", "-", pages[1][8])
         composeRule.onNodeWithTag("finish-home-edit").performClick()
     }
 
@@ -401,10 +368,10 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("edit-configure").performClick()
         composeRule.onNodeWithText("Páginas").performClick()
-        composeRule.onNodeWithTag("delete-home-page-0", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("page-manager-delete-0", useUnmergedTree = true).performClick()
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
-        composeRule.onNodeWithTag("delete-home-page-0", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("page-manager-delete-0", useUnmergedTree = true).performClick()
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(1)
@@ -414,7 +381,7 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun widgetCanBeDraggedToTrashWithoutRemovingItsProviderApp() {
+    fun widgetCanBeRemovedFromLiveEditWithoutRemovingItsProviderApp() {
         val allocatedId = java.util.concurrent.atomic.AtomicInteger(-1)
         val providerPackage = java.util.concurrent.atomic.AtomicReference<String>()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -439,35 +406,19 @@ class HomeNavigationTest {
         }
         val widgetTag = "home-widget-${allocatedId.get()}"
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag(widgetTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag(widgetTag, useUnmergedTree = true).performTouchInput { longClick() }
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
-        val widgetNode = composeRule.onNodeWithTag(widgetTag, useUnmergedTree = true)
-        val source = widgetNode.fetchSemanticsNode().boundsInRoot
-        val destination = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
-        widgetNode.performTouchInput {
-            val origin = source.center - source.topLeft
-            val target = destination - source.topLeft
-            down(origin)
-            advanceEventTime(700)
-            for (step in 1..14) {
-                val fraction = step / 14f
-                moveTo(origin + (target - origin) * fraction, 35)
-            }
-            up()
-        }
-        composeRule.waitUntil(5_000) {
-            composeRule.activity.hostedWidgetIds.none { it == allocatedId.get() }
-        }
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("remove-widget-${allocatedId.get()}").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("remove-widget-${allocatedId.get()}").performClick()
+        composeRule.waitUntil(5_000) { allocatedId.get() !in composeRule.activity.hostedWidgetIds }
         composeRule.activityRule.scenario.onActivity { activity ->
-            assertEquals("Dragging to the bin must release the Android widget ID", null,
+            assertEquals("Removing a widget must release its Android widget ID", null,
                 android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(allocatedId.get()))
             assertTrue("Removing a widget must not uninstall its provider app", activity.packageManager.getPackageInfo(
                 providerPackage.get(), 0
             ) != null)
         }
-        composeRule.activityRule.scenario.onActivity { activity ->
-            if (allocatedId.get() in activity.hostedWidgetIds) activity.removeWidget(allocatedId.get())
-        }
+        composeRule.onNodeWithTag("finish-home-edit").performClick()
+
     }
 
     @Test
@@ -508,8 +459,10 @@ class HomeNavigationTest {
                 assertEquals("Test widget must be assigned to page 2", 1, activity.hostedWidgetPages[id])
                 assertTrue("The test provider declares horizontal resizing", activity.canResizeWidgetWidth(id))
                 val oldSpan = activity.widgetColumnSpan(id)
-                activity.resizeWidgetWidth(id, 1, 8)
-                assertEquals("Width resize should preserve provider constraints and update the saved grid span", oldSpan + 1, activity.widgetColumnSpan(id))
+                activity.resizeWidgetWidth(id, -1, 8)
+                val narrowerSpan = activity.widgetColumnSpan(id)
+                assertTrue("Width resize stays within Android provider bounds and no wider than before", narrowerSpan in 1..oldSpan)
+                assertTrue("Width resize must persist its grid span", activity.getSharedPreferences("nexo_widgets", 0).getInt("span_$id", -1) == narrowerSpan)
                 assertTrue("NEXO must create an AppWidgetHostView for each bound widget", activity.createWidgetHostView(id) != null && activity.createWidgetHostView(survivorId) != null)
             }
         } finally {

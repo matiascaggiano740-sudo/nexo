@@ -159,7 +159,7 @@ methods=(
   doubleTapEmptyHomeCellDoesNotTriggerLockFeature
   activityAlwaysRequestsTheLiveAndroidWallpaper
   savedHomeQuoteCanBeRemovedWithoutReturningAsDefault
-  appsCanBeDraggedToTrashFromHomeAndCreatedPagesWithoutLosingOtherPages
+  appsCanBeRemovedFromHomeAndCreatedPagesWithoutLosingOtherPages
   widgetPickerShowsVisualPreviewCards
   longPressingHomeAppDoesNotEnterPageEdit
   swipeUpOnHomeOpensTheAppDrawer
@@ -169,7 +169,7 @@ methods=(
   longPressDragMovesAnAppAcrossPagesAndPersistsSelection
   longPressDragMovesAnAppFromHomeToDockAndPersistsBothLocations
   populatedPageDeletionRequiresConfirmation
-  widgetCanBeDraggedToTrashWithoutRemovingItsProviderApp
+  widgetCanBeRemovedFromLiveEditWithoutRemovingItsProviderApp
   deletingPageWithWidgetConfirmsAndRemovesItsPlacement
   appDrawerOpensAndClosesFromExplicitControls
   systemBackClosesTheAppDrawer

@@ -694,17 +694,36 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             .pointerInput(widgetId) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                    val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
-                                    editingHome = true
-                                    editingWidgetDragId = widgetId
-                                    var rootPosition = widgetCoordinates?.localToRoot(held.position) ?: held.position
-                                    try {
-                                        drag(held.id) { change ->
+                                    val startedAt = down.uptimeMillis
+                                    val slop = viewConfiguration.touchSlop
+                                    var change = down
+                                    var longPressed = false
+                                    var cancelled = false
+                                    var rootPosition = widgetCoordinates?.localToRoot(down.position) ?: down.position
+                                    while (change.pressed) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        val delta = change.position - down.position
+                                        if (!longPressed && delta.getDistance() > slop) {
+                                            cancelled = true
+                                            break
+                                        }
+                                        if (!longPressed && change.uptimeMillis - startedAt >= viewConfiguration.longPressTimeoutMillis) {
+                                            longPressed = true
+                                            editingHome = true
+                                            editingWidgetDragId = widgetId
+                                        }
+                                        if (longPressed) {
                                             change.consume()
                                             rootPosition = widgetCoordinates?.localToRoot(change.position) ?: change.position
                                         }
+                                    }
+                                    if (!cancelled && !longPressed && change.uptimeMillis - startedAt >= viewConfiguration.longPressTimeoutMillis) {
+                                        longPressed = true
+                                        editingHome = true
+                                    }
+                                    if (longPressed) {
                                         if (trashTargetBounds?.contains(rootPosition) == true) launcherActivity?.removeWidget(widgetId)
-                                    } finally {
                                         editingWidgetDragId = -1
                                     }
                                 }
@@ -2169,7 +2188,7 @@ private fun HomeAppCell(
             )
             if (editingHome) {
                 Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
-                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove(app.pkg) }) {
+                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).testTag("home-remove-app-$index-${app.pkg}").clickable { onRemove(app.pkg) }) {
                     Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 16.sp, lineHeight = 16.sp) }
                 }
             }
@@ -2177,7 +2196,7 @@ private fun HomeAppCell(
             FolderIcon(folderName, folderApps, iconSize, onFolderClick)
             if (editingHome) {
                 Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
-                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove("folder:$folderName") }) {
+                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).testTag("home-remove-folder-$index-$folderName").clickable { onRemove("folder:$folderName") }) {
                     Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 16.sp, lineHeight = 16.sp) }
                 }
                 TextButton(onClick = onFolderEdit, modifier = Modifier.align(Alignment.BottomCenter)) {
