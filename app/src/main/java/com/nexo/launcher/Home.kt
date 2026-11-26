@@ -43,6 +43,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.*
@@ -2578,30 +2580,16 @@ var manualCategories by remember {
             }
     ) {
 
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Aplicaciones", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-        Text("${apps.size} disponibles", color = Cream.copy(alpha = 0.64f), fontSize = 12.sp)
     }
     Spacer(Modifier.height(10.dp))
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            q,
-            { q = it },
-            singleLine = true,
-            placeholder = { Text("Buscar aplicaciones") },
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions.Default
-        )
-        TextButton(
-            onClick = { showOrganizer = true },
-            modifier = Modifier.testTag("drawer-organize-apps"),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-        ) { Text("Organizar", color = Color(0xFFD6AE70), fontWeight = FontWeight.SemiBold) }
-    }
-    Spacer(Modifier.height(5.dp))
-        LazyColumn(state = drawerListState, contentPadding = PaddingValues(bottom = 32.dp), modifier = Modifier.testTag("app-drawer-list")) {
+        LazyColumn(
+            state = drawerListState,
+            contentPadding = PaddingValues(bottom = 12.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("app-drawer-list")
+        ) {
             if (q.isNotBlank() && categories.isEmpty()) {
                 item(key = "empty-search") {
                     Text("No se encontraron aplicaciones", color = Cream.copy(alpha = 0.72f), modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp), textAlign = TextAlign.Center)
@@ -2625,7 +2613,50 @@ var manualCategories by remember {
                         }
                     }
                 }
-            }        }
+            }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(58.dp).testTag("app-drawer-search-container"),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier.width(238.dp).height(42.dp).testTag("drawer-search-pill"),
+                color = Color(0xFF302D2A),
+                shape = RoundedCornerShape(24.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+            ) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("⌕", color = Color(0xFFD6AE70), fontSize = 21.sp, lineHeight = 22.sp)
+                    Spacer(Modifier.width(8.dp))
+                    BasicTextField(
+                        value = q,
+                        onValueChange = { q = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = Cream),
+                        cursorBrush = SolidColor(Color(0xFFD6AE70)),
+                        modifier = Modifier.weight(1f).testTag("drawer-search-field"),
+                        decorationBox = { innerTextField ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (q.isEmpty()) Text("Buscar", color = Cream.copy(alpha = 0.58f), fontSize = 14.sp)
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 5.dp).size(40.dp)
+                    .testTag("drawer-organize-apps").clickable { showOrganizer = true },
+                color = Color(0xFF302D2A),
+                shape = RoundedCornerShape(20.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("☷", color = Color(0xFFD6AE70), fontSize = 20.sp,
+                        modifier = Modifier.semantics { contentDescription = "Organizar aplicaciones" })
+                }
+            }
+        }
         if (showOrganizer) {
             OrganizeAppsDialog(
                 apps = apps,

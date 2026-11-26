@@ -37,7 +37,14 @@ class HomeNavigationTest {
         val appPackage = target!!.activityInfo.packageName
         val appLabel = target.loadLabel(composeRule.activity.packageManager).toString()
         composeRule.onNodeWithTag("open-app-drawer").performClick()
-        composeRule.onNodeWithText("Buscar aplicaciones").performTextInput(appLabel)
+        composeRule.waitForIdle()
+        val drawer = composeRule.onNodeWithTag("app-drawer-surface").fetchSemanticsNode().boundsInRoot
+        val search = composeRule.onNodeWithTag("app-drawer-search-container").fetchSemanticsNode().boundsInRoot
+        val listBounds = composeRule.onNodeWithTag("app-drawer-list").fetchSemanticsNode().boundsInRoot
+        assertTrue("App drawer search should be fixed at the bottom", search.top >= listBounds.bottom - 2f)
+        assertTrue("App drawer search should stay inside the drawer bottom edge", search.bottom <= drawer.bottom)
+        assertTrue("App drawer should not advertise its app count", composeRule.onAllNodesWithText("disponibles", substring = true).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithTag("drawer-search-field").performTextInput(appLabel)
         composeRule.waitForIdle()
         val result = composeRule.onNodeWithTag("drawer-app-$appPackage").fetchSemanticsNode().boundsInRoot
         val list = composeRule.onNodeWithTag("app-drawer-list").fetchSemanticsNode().boundsInRoot
