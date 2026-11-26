@@ -1788,19 +1788,81 @@ private fun HomeEditOverview(
         },
         confirmButton = { TextButton(onClick = { showEffects = false }) { Text("Cerrar") } }
     )
-    if (showConfigure) AlertDialog(
-        onDismissRequest = { showConfigure = false },
-        title = { Text("Configurar inicio") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("Páginas" to onManage, "Carpeta" to onFolder, "Iconos" to onIcons,
-                    "Frase e imagen" to onQuote, "Ajustes de NEXO" to onSettings).forEach { (label, action) ->
-                    TextButton(onClick = { showConfigure = false; action() }, modifier = Modifier.fillMaxWidth()) { Text(label) }
+    if (showConfigure) ConfigureHomeDialog(
+        onDismiss = { showConfigure = false },
+        onManage = { showConfigure = false; onManage() },
+        onFolder = { showConfigure = false; onFolder() },
+        onIcons = { showConfigure = false; onIcons() },
+        onQuote = { showConfigure = false; onQuote() },
+        onSettings = { showConfigure = false; onSettings() }
+    )
+}
+
+@Composable
+private fun ConfigureHomeDialog(
+    onDismiss: () -> Unit,
+    onManage: () -> Unit,
+    onFolder: () -> Unit,
+    onIcons: () -> Unit,
+    onQuote: () -> Unit,
+    onSettings: () -> Unit
+) {
+    val actions = listOf(
+        Triple("▤", "Páginas", "configure-home-pages") to onManage,
+        Triple("▣", "Carpeta", "configure-home-folder") to onFolder,
+        Triple("◈", "Iconos", "configure-home-icons") to onIcons,
+        Triple("✦", "Frase e imagen", "configure-home-quote") to onQuote,
+        Triple("⚙", "Ajustes de NEXO", "configure-home-settings") to onSettings
+    )
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 380.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = Color(0xF51C1915),
+            contentColor = Cream,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6AE70).copy(alpha = 0.34f)),
+            shadowElevation = 24.dp
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp)) {
+                Text("Configurar inicio", color = Cream, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(3.dp))
+                Text("Personalizá tu espacio", color = Cream.copy(alpha = 0.62f), fontSize = 12.sp)
+                Spacer(Modifier.height(16.dp))
+                val actionRows = actions.chunked(2)
+                actionRows.forEachIndexed { rowIndex, rowActions ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        rowActions.forEach { (item, action) ->
+                            ConfigureHomeActionButton(item.first, item.second, item.third, action, Modifier.weight(1f))
+                        }
+                        if (rowActions.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                    if (rowIndex < actionRows.lastIndex) Spacer(Modifier.height(10.dp))
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = { showConfigure = false }) { Text("Cerrar") } }
-    )
+        }
+    }
+}
+
+@Composable
+private fun ConfigureHomeActionButton(glyph: String, title: String, tag: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.height(104.dp).testTag(tag).clickable(onClick = onClick),
+        shape = RoundedCornerShape(19.dp),
+        color = Color(0xFF29231C),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6AE70).copy(alpha = 0.20f))
+    ) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Surface(shape = RoundedCornerShape(50), color = Color(0xFFD6AE70).copy(alpha = 0.13f), modifier = Modifier.size(42.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(glyph, color = Color(0xFFD6AE70), fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(title, color = Cream, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 15.sp)
+        }
+    }
 }
 
 @Composable
@@ -2326,9 +2388,9 @@ private fun appCategory(app: AppItem): String {
 
 @Composable
 private fun DrawerCategoryTitle(title: String) {
-    Column(Modifier.fillMaxWidth().padding(top = 17.dp, bottom = 7.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp)) {
         Text(title, color = Cream, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.10f)))
     }
 }
@@ -2492,14 +2554,9 @@ var manualCategories by remember {
     ) {
 
     Spacer(Modifier.height(8.dp))
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Aplicaciones", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            Text("${apps.size} disponibles", color = Cream.copy(alpha = 0.64f), fontSize = 12.sp)
-        }
-        TextButton(onClick = close, modifier = Modifier.testTag("close-app-drawer"), contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)) {
-            Text("Cerrar", color = Color(0xFFD6AE70), fontWeight = FontWeight.SemiBold)
-        }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Aplicaciones", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+        Text("${apps.size} disponibles", color = Cream.copy(alpha = 0.64f), fontSize = 12.sp)
     }
     Spacer(Modifier.height(10.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -2528,21 +2585,20 @@ var manualCategories by remember {
             categories.forEach { (title, members) ->
                 item(key = "category-$title") { DrawerCategoryTitle(title) }
                 items(members.chunked(4), key = { row -> "$title-${row.joinToString { it.pkg }}" }) { row ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.Start) {
-                        row.forEach { app ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Start) {
+                        repeat(4) { column ->
                             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                                AppIcon(
-                                    app, 56.dp, Color.White, onLaunch = close,
-                                    onLongPress = close,
-                                    dragPayload = app.pkg,
-                                    testTag = "drawer-app-${app.pkg}"
-                                )
+                                row.getOrNull(column)?.let { app ->
+                                    AppIcon(
+                                        app, 56.dp, Color.White, onLaunch = close,
+                                        onLongPress = close,
+                                        dragPayload = app.pkg,
+                                        testTag = "drawer-app-${app.pkg}"
+                                    )
+                                }
                             }
                         }
-
-
                     }
-
                 }
             }        }
         if (showOrganizer) {

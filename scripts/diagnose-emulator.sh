@@ -172,7 +172,7 @@ methods=(
   populatedPageDeletionRequiresConfirmation
   widgetCanBeRemovedFromLiveEditWithoutRemovingItsProviderApp
   deletingPageWithWidgetConfirmsAndRemovesItsPlacement
-  appDrawerOpensAndClosesFromExplicitControls
+  appDrawerHasNoRedundantCloseButton
   systemBackClosesTheAppDrawer
   newPageStaysEmptyAndPagesCanBeSelectedIndependently
   iconPackSelectionIsReachableFromHomeEdit

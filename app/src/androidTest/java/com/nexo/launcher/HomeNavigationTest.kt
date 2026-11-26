@@ -63,8 +63,13 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("wallpaper-effect-oscuro").performClick()
         assertEquals(0.22f, composeRule.activity.getSharedPreferences("nexo", 0).getFloat("wallpaper_dim", -1f), 0.001f)
         composeRule.onNodeWithTag("edit-configure").performClick()
-        composeRule.onNodeWithText("Frase e imagen").assertExists()
-        composeRule.onNodeWithText("Frase e imagen").performClick()
+        composeRule.onAllNodesWithText("Cerrar").assertCountEquals(0)
+        composeRule.onNodeWithTag("configure-home-pages").assertExists()
+        composeRule.onNodeWithTag("configure-home-folder").assertExists()
+        composeRule.onNodeWithTag("configure-home-icons").assertExists()
+        composeRule.onNodeWithTag("configure-home-quote").assertExists()
+        composeRule.onNodeWithTag("configure-home-settings").assertExists()
+        composeRule.onNodeWithTag("configure-home-quote").performClick()
         composeRule.onNodeWithText("Tu tarjeta").assertExists()
         composeRule.onNodeWithText("Cancelar").performClick()
         composeRule.onNodeWithTag("finish-home-edit").performClick()
@@ -285,7 +290,7 @@ class HomeNavigationTest {
     fun swipeUpOnHomeOpensTheAppDrawer() {
         composeRule.onNodeWithTag("home-surface").performTouchInput { swipeUp() }
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(0)
     }
 
     @Test
@@ -578,12 +583,13 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun appDrawerOpensAndClosesFromExplicitControls() {
+    fun appDrawerHasNoRedundantCloseButton() {
         composeRule.onNodeWithTag("open-app-drawer").performClick()
-        composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
-        composeRule.onNodeWithTag("close-app-drawer").performClick()
-        composeRule.onAllNodesWithTag("open-app-drawer").assertCountEquals(1)
         composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Cerrar").assertCountEquals(0)
+        composeRule.onNodeWithTag("app-drawer-surface").performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("open-app-drawer").assertCountEquals(1)
     }
 
     @Test
@@ -633,7 +639,7 @@ class HomeNavigationTest {
     @Test
     fun systemBackClosesTheAppDrawer() {
         composeRule.onNodeWithTag("open-app-drawer").performClick()
-        composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(1)
+        composeRule.onAllNodesWithTag("close-app-drawer").assertCountEquals(0)
         composeRule.activityRule.scenario.onActivity { activity ->
             activity.onBackPressedDispatcher.onBackPressed()
         }
