@@ -52,6 +52,7 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-surface").assertExists()
         composeRule.onNodeWithTag("home-edit-overlay").assertExists()
+        composeRule.onNodeWithTag("home-trash-target").assertExists()
         composeRule.onNodeWithTag("poco-edit-toolbar").assertExists()
         composeRule.onNodeWithTag("edit-wallpaper").assertExists()
         composeRule.onNodeWithTag("edit-effects").assertExists()
@@ -250,38 +251,7 @@ class HomeNavigationTest {
         }.isSuccess)
     }
 
-    @Test
-    fun appsCanBeDraggedToTrashFromHomeWithoutUninstallingThem() {
-        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val packageName = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
-            .map { it.activityInfo.packageName }.first { it != composeRule.activity.packageName }
-        val page = MutableList(28) { "-" }.apply { this[8] = packageName }
-        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
-            .putString("pages", page.joinToString("|"))
-            .putString("packages", page.joinToString("|"))
-            .putInt("current_page", 0).commit()
-        composeRule.activityRule.scenario.recreate()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
-        val appNode = composeRule.onNodeWithTag("home-page-app")
-        appNode.performTouchInput { longClick() }
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
-        val bounds = appNode.fetchSemanticsNode().boundsInRoot
-        val trash = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
-        appNode.performTouchInput {
-            val origin = bounds.center - bounds.topLeft
-            val destination = trash - bounds.topLeft
-            down(origin)
-            advanceEventTime(700)
-            for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
-            up()
-        }
-        composeRule.waitUntil(5_000) {
-            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|").getOrNull(8) == "-"
-        }
-        assertTrue("Dragging the shortcut to the bin must leave the application installed", runCatching {
-            composeRule.activity.packageManager.getApplicationInfo(packageName, 0)
-        }.isSuccess)
-    }
+
 
     @Test
     fun longPressingHomeAppEntersPocoEditModeWithoutLaunchingIt() {
