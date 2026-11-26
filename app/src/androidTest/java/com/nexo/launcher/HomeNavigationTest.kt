@@ -160,6 +160,39 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun appCanBeDraggedToTrashWhileEditingWithoutUninstallingIt() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val packageName = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.first { it != composeRule.activity.packageName }
+        val page = MutableList(28) { "-" }.apply { this[8] = packageName }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
+        val node = composeRule.onNodeWithTag("home-page-app")
+        val source = node.fetchSemanticsNode().boundsInRoot
+        val target = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
+        node.performTouchInput {
+            val origin = source.center - source.topLeft
+            val destination = target - source.topLeft
+            down(origin)
+            advanceEventTime(700)
+            for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|").getOrNull(8) == "-"
+        }
+        assertTrue("Dragging the shortcut to the trash must leave its app installed", runCatching {
+            composeRule.activity.packageManager.getApplicationInfo(packageName, 0)
+        }.isSuccess)
+    }
+
+    @Test
     fun appCanBeRemovedFromHomeWithoutUninstallingIt() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val packageName = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
@@ -180,6 +213,72 @@ class HomeNavigationTest {
         assertEquals("The shortcut is removed without uninstalling the app", "-",
             composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|")[8])
         assertTrue("The application remains installed", runCatching {
+            composeRule.activity.packageManager.getApplicationInfo(packageName, 0)
+        }.isSuccess)
+    }
+
+    @Test
+    fun appsCanBeDraggedToTrashFromHomeWithoutUninstallingThem() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val packageName = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.first { it != composeRule.activity.packageName }
+        val page = MutableList(28) { "-" }.apply { this[8] = packageName }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        val appNode = composeRule.onNodeWithTag("home-page-app")
+        val bounds = appNode.fetchSemanticsNode().boundsInRoot
+        appNode.performTouchInput { longClick() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
+        val target = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
+        appNode.performTouchInput {
+            val origin = bounds.center - bounds.topLeft
+            val destination = target - bounds.topLeft
+            down(origin)
+            advanceEventTime(700)
+            for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|").getOrNull(8) == "-"
+        }
+        assertTrue("Dragging the shortcut to the trash must not uninstall the app", runCatching {
+            composeRule.activity.packageManager.getApplicationInfo(packageName, 0)
+        }.isSuccess)
+    }
+
+    @Test
+    fun appsCanBeDraggedToTrashFromHomeWithoutUninstallingThem() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val packageName = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.first { it != composeRule.activity.packageName }
+        val page = MutableList(28) { "-" }.apply { this[8] = packageName }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        val appNode = composeRule.onNodeWithTag("home-page-app")
+        appNode.performTouchInput { longClick() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
+        val bounds = appNode.fetchSemanticsNode().boundsInRoot
+        val trash = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
+        appNode.performTouchInput {
+            val origin = bounds.center - bounds.topLeft
+            val destination = trash - bounds.topLeft
+            down(origin)
+            advanceEventTime(700)
+            for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
+            up()
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|").getOrNull(8) == "-"
+        }
+        assertTrue("Dragging the shortcut to the bin must leave the application installed", runCatching {
             composeRule.activity.packageManager.getApplicationInfo(packageName, 0)
         }.isSuccess)
     }

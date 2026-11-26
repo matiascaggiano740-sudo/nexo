@@ -160,6 +160,7 @@ methods=(
   activityAlwaysRequestsTheLiveAndroidWallpaper
   savedHomeQuoteCanBeRemovedWithoutReturningAsDefault
   appsCanBeRemovedFromCreatedPageWithoutChangingHome
+  appCanBeDraggedToTrashWhileEditingWithoutUninstallingIt
   appCanBeRemovedFromHomeWithoutUninstallingIt
   widgetPickerShowsVisualPreviewCards
   longPressingHomeAppEntersPocoEditModeWithoutLaunchingIt

@@ -798,7 +798,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         cellHeight = cellHeight,
                         iconSize = iconSizing.iconSizeDp.dp,
                         onLongPress = { editingHome = true },
-                        onAppClick = { app?.let { runCatching { ctx.startActivity(it.intent) } } },
+                        onAppClick = { if (!editingHome) app?.let { runCatching { ctx.startActivity(it.intent) } } },
                         onRemove = { pkg ->
                             val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
                             val idx = slots.indexOf(pkg)
