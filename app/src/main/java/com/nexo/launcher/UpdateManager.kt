@@ -32,6 +32,8 @@ internal sealed interface UpdateCheckResult {
     data class Current(val installedVersionCode: Long) : UpdateCheckResult
 }
 
+internal class NoPublishedNexoReleaseException : IllegalStateException("Todavía no hay una actualización pública de NEXO.")
+
 internal class UpdateManager(private val context: Context) {
     companion object {
         const val PACKAGE_ID = "com.nexo.launcher"
@@ -41,7 +43,12 @@ internal class UpdateManager(private val context: Context) {
 
     suspend fun check(): UpdateCheckResult = withContext(Dispatchers.IO) {
         require(isTrustedUpdateUrl(BuildConfig.NEXO_RELEASES_API_URL)) { "La URL del manifiesto debe usar HTTPS" }
-        val release = readJson(BuildConfig.NEXO_RELEASES_API_URL, "application/vnd.github+json")
+        val release = try {
+            readJson(BuildConfig.NEXO_RELEASES_API_URL, "application/vnd.github+json")
+        } catch (t: Exception) {
+            if (t.message == "El servidor respondió HTTP 404") throw NoPublishedNexoReleaseException()
+            throw t
+        }
         val assets = release.optJSONArray("assets") ?: error("El release no tiene archivos publicados")
         val manifestUrl = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }
             .firstOrNull { it.optString("name") == MANIFEST_ASSET }

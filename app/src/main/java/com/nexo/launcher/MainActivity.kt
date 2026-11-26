@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
     val hostedWidgetIds = mutableStateListOf<Int>()
     val hostedWidgetPages = mutableStateMapOf<Int, Int>()
     val hostedWidgetHeights = mutableStateMapOf<Int, Int>()
+    val hostedWidgetSpans = mutableStateMapOf<Int, Int>()
     val homeCellHeightDp = androidx.compose.runtime.mutableFloatStateOf(72f)
     val homeCellHeightMeasured = androidx.compose.runtime.mutableStateOf(false)
     val availableWidgetProviders = mutableStateListOf<AppWidgetProviderInfo>()
@@ -52,11 +53,12 @@ class MainActivity : ComponentActivity() {
         storedWidgetIds.forEach { id ->
             if (manager.getAppWidgetInfo(id) == null) {
                 widgetHost.deleteAppWidgetId(id)
-                widgetPrefs.edit().remove("height_$id").apply()
+                widgetPrefs.edit().remove("height_$id").remove("span_$id").apply()
             } else {
                 hostedWidgetIds.add(id)
                 hostedWidgetPages[id] = storedWidgetPages[id] ?: 0
                 widgetPrefs.getInt("height_$id", -1).takeIf { it > 0 }?.let { hostedWidgetHeights[id] = it }
+                widgetPrefs.getInt("span_$id", -1).takeIf { it in 1..4 }?.let { hostedWidgetSpans[id] = it }
             }
         }
         widgetPrefs.edit().putString("ids", hostedWidgetIds.joinToString(","))
@@ -79,18 +81,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Android paints the live/current system wallpaper behind a real Home activity. */
+    /** Always use Android's live system wallpaper, whether NEXO was opened as HOME or by its app icon. */
     private fun applyWallpaperSurface(source: Intent?) {
-        val isHomeLaunch = source?.action == Intent.ACTION_MAIN &&
-            source.categories?.contains(Intent.CATEGORY_HOME) == true
-        if (isHomeLaunch) {
-            window.setBackgroundDrawableResource(android.R.color.transparent)
-            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
-        } else {
-            // An app-icon launch must be opaque: otherwise the old launcher's icons show through.
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
-            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.rgb(18, 17, 15)))
-        }
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -218,10 +212,11 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Android ya no encuentra ese widget; elegí otro", Toast.LENGTH_LONG).show()
             return
         }
-        val addedRows = widgetRowsForHeight(widgetInfo.minHeight.coerceAtLeast(96), homeCellHeightDp.floatValue)
-        val existingRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page }
-            .sumOf { widgetHeightDp(it).let { height -> widgetRowsForHeight(height, homeCellHeightDp.floatValue) } }
-        if ((existingRows + addedRows) * 4 + pendingWidgetAppCells > 28) {
+        hostedWidgetSpans[id] = defaultWidgetColumnSpan(widgetInfo)
+        val candidateIds = hostedWidgetIds.filter { hostedWidgetPages[it] == page } + id
+        val packedRows = widgetRowsForPage(candidateIds, homeCellHeightDp.floatValue)
+        if (packedRows * 4 + pendingWidgetAppCells > 28) {
+            hostedWidgetSpans.remove(id)
             Toast.makeText(this, "El widget no entra en las celdas libres de esta página", Toast.LENGTH_LONG).show()
             widgetHost.deleteAppWidgetId(id)
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
@@ -229,16 +224,16 @@ class MainActivity : ComponentActivity() {
         }
         if (id !in hostedWidgetIds) hostedWidgetIds.add(id)
         hostedWidgetPages[id] = pendingWidgetPage
+        applyWidgetOptions(id)
         persistWidgetState()
         pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     }
 
     fun moveWidgetToPage(id: Int, targetPage: Int, totalPages: Int, appCells: Int) {
         if (targetPage !in 0 until totalPages || id !in hostedWidgetIds) return
-        val targetRows = hostedWidgetIds.filter { hostedWidgetPages[it] == targetPage && it != id }
-            .sumOf { widgetRowsForHeight(widgetHeightDp(it), homeCellHeightDp.floatValue) }
-        val neededRows = widgetRowsForHeight(widgetHeightDp(id), homeCellHeightDp.floatValue)
-        if ((hostedWidgetPages[id] ?: 0) != targetPage && (targetRows + neededRows) * 4 + appCells > 28) {
+        val targetIds = hostedWidgetIds.filter { hostedWidgetPages[it] == targetPage && it != id } + id
+        val packedRows = widgetRowsForPage(targetIds, homeCellHeightDp.floatValue)
+        if ((hostedWidgetPages[id] ?: 0) != targetPage && packedRows * 4 + appCells > 28) {
             Toast.makeText(this, "No hay espacio libre para ese widget en la página", Toast.LENGTH_SHORT).show()
             return
         }
@@ -286,6 +281,7 @@ class MainActivity : ComponentActivity() {
             .putString("ids", hostedWidgetIds.joinToString(","))
             .putString("pages", hostedWidgetPages.entries.joinToString(",") { "${it.key}:${it.value}" })
         hostedWidgetHeights.forEach { (id, height) -> editor.putInt("height_$id", height) }
+        hostedWidgetSpans.forEach { (id, span) -> editor.putInt("span_$id", span) }
         editor.apply()
     }
 
@@ -293,13 +289,76 @@ class MainActivity : ComponentActivity() {
         hostedWidgetIds.remove(id)
         hostedWidgetPages.remove(id)
         hostedWidgetHeights.remove(id)
-        getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().remove("height_$id").apply()
+        hostedWidgetSpans.remove(id)
+        getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().remove("height_$id").remove("span_$id").apply()
         widgetHost.deleteAppWidgetId(id)
         persistWidgetState()
     }
 
     fun widgetHeightDp(id: Int): Int = hostedWidgetHeights[id]
         ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.minHeight?.coerceAtLeast(96) ?: 132
+
+    private fun widgetGridCellWidthDp(): Float {
+        val total = resources.displayMetrics.widthPixels / resources.displayMetrics.density - 48f
+        return ((total - 24f) / 4f).coerceAtLeast(40f)
+    }
+
+    private fun spanForWidgetWidth(widthDp: Int): Int = kotlin.math.ceil(
+        (widthDp.coerceAtLeast(1) + 8f) / (widgetGridCellWidthDp() + 8f)
+    ).toInt().coerceIn(1, 4)
+
+    private fun defaultWidgetColumnSpan(info: AppWidgetProviderInfo): Int = spanForWidgetWidth(info.minWidth)
+
+    fun widgetColumnSpan(id: Int): Int = hostedWidgetSpans[id]?.coerceIn(1, 4)
+        ?: AppWidgetManager.getInstance(this).getAppWidgetInfo(id)?.let(::defaultWidgetColumnSpan) ?: 4
+
+    fun widgetWidthDp(id: Int): Int {
+        val span = widgetColumnSpan(id)
+        return (widgetGridCellWidthDp() * span + 8f * (span - 1)).toInt().coerceAtLeast(40)
+    }
+
+    fun widgetRowsForPage(ids: List<Int>, cellHeightDp: Float): Int {
+        var usedColumns = 0
+        var rowHeight = 0
+        var totalRows = 0
+        ids.forEach { id ->
+            val span = widgetColumnSpan(id)
+            val height = widgetRowsForHeight(widgetHeightDp(id), cellHeightDp)
+            if (usedColumns + span > 4) {
+                totalRows += rowHeight
+                usedColumns = 0
+                rowHeight = 0
+            }
+            usedColumns += span
+            rowHeight = maxOf(rowHeight, height)
+        }
+        return (totalRows + rowHeight).coerceAtMost(7)
+    }
+
+    fun canResizeWidgetWidth(id: Int): Boolean {
+        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return false
+        return info.resizeMode and AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0
+    }
+
+    fun resizeWidgetWidth(id: Int, deltaColumns: Int, pageCellCount: Int) {
+        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return
+        if (!canResizeWidgetWidth(id)) return
+        val minimum = spanForWidgetWidth(info.minResizeWidth.takeIf { it > 0 } ?: info.minWidth)
+        val maximum = maxOf(minimum, (if (info.maxResizeWidth > 0) spanForWidgetWidth(info.maxResizeWidth) else 4).coerceIn(1, 4))
+        val old = widgetColumnSpan(id)
+        val next = (old + deltaColumns).coerceIn(minimum, maximum)
+        if (next == old) return
+        hostedWidgetSpans[id] = next
+        val page = hostedWidgetPages[id] ?: 0
+        val pageRows = widgetRowsForPage(hostedWidgetIds.filter { hostedWidgetPages[it] == page }, homeCellHeightDp.floatValue)
+        if (pageRows * 4 + pageCellCount > 28) {
+            hostedWidgetSpans[id] = old
+            Toast.makeText(this, "No hay espacio para cambiar el ancho de este widget", Toast.LENGTH_SHORT).show()
+            return
+        }
+        persistWidgetState()
+        applyWidgetOptions(id)
+    }
 
     /** Restores metadata only for widget instances that still exist; never fabricates widget IDs. */
     fun restoreWidgetPlacements(specs: JSONArray, pageCount: Int): Triple<Int, Int, Int> {
@@ -324,6 +383,7 @@ class MainActivity : ComponentActivity() {
             used += match
             restoredOrder += match
             hostedWidgetPages[match] = spec.optInt("page", 0).coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            spec.optInt("widthSpan", -1).takeIf { it in 1..4 }?.let { hostedWidgetSpans[match] = it }
             val info = manager.getAppWidgetInfo(match)
             if (info != null && spec.has("heightDp")) {
                 val minimum = info.minResizeHeight.takeIf { it > 0 } ?: info.minHeight.coerceAtLeast(96)
@@ -339,19 +399,32 @@ class MainActivity : ComponentActivity() {
                     putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
                 })
             }
+            applyWidgetOptions(match)
             restored++
         }
         val removedIds = hostedWidgetIds.filterNot { it in used }.toList()
         removedIds.forEach { id ->
             hostedWidgetPages.remove(id)
             hostedWidgetHeights.remove(id)
+            hostedWidgetSpans.remove(id)
             widgetHost.deleteAppWidgetId(id)
-            getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().remove("height_$id").apply()
+            getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().remove("height_$id").remove("span_$id").apply()
         }
         hostedWidgetIds.clear()
         hostedWidgetIds.addAll(restoredOrder)
         persistWidgetState()
         return Triple(restored, needsReAdd, removedIds.size)
+    }
+
+    private fun applyWidgetOptions(id: Int) {
+        val heightDp = widgetHeightDp(id)
+        val allocatedHeight = widgetSpanHeightDp(widgetRowsForHeight(heightDp, homeCellHeightDp.floatValue), homeCellHeightDp.floatValue).toInt()
+        AppWidgetManager.getInstance(this).updateAppWidgetOptions(id, Bundle().apply {
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, widgetWidthDp(id))
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, widgetWidthDp(id))
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, allocatedHeight)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
+        })
     }
 
     fun canResizeWidget(id: Int): Boolean {
@@ -362,47 +435,28 @@ class MainActivity : ComponentActivity() {
     fun resizeWidget(id: Int, deltaDp: Int, appCells: Int) {
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(id) ?: return
         if (!canResizeWidget(id)) return
-        val page = hostedWidgetPages[id] ?: 0
-        val pageRows = hostedWidgetIds.filter { hostedWidgetPages[it] == page && it != id }
-            .sumOf { other -> widgetRowsForHeight(widgetHeightDp(other), homeCellHeightDp.floatValue) }
         val minHeight = info.minResizeHeight.takeIf { it > 0 } ?: info.minHeight.coerceAtLeast(90)
-        if (pageRows * 4 + appCells + widgetRowsForHeight(minHeight, homeCellHeightDp.floatValue) * 4 > 28) return
-        val pageMaxRows = ((28 - appCells) / 4 - pageRows).coerceAtLeast(1)
-        val pageMaxHeight = widgetSpanHeightDp(pageMaxRows, homeCellHeightDp.floatValue).toInt()
-        val declaredMaxHeight = info.maxResizeHeight.takeIf { it > 0 } ?: 700
-        val maxHeight = minOf(declaredMaxHeight, pageMaxHeight).coerceAtLeast(minHeight)
-        val newHeight = (widgetHeightDp(id) + deltaDp).coerceIn(minHeight, maxHeight)
-        if (pageRows * 4 + appCells + widgetRowsForHeight(newHeight, homeCellHeightDp.floatValue) * 4 > 28) {
-            Toast.makeText(this, "No hay suficientes celdas libres para agrandar el widget", Toast.LENGTH_SHORT).show()
+        val maxHeight = info.maxResizeHeight.takeIf { it > 0 } ?: 700
+        val oldHeight = widgetHeightDp(id)
+        val newHeight = (oldHeight + deltaDp).coerceIn(minHeight, maxOf(minHeight, maxHeight))
+        if (newHeight == oldHeight) return
+        hostedWidgetHeights[id] = newHeight
+        val page = hostedWidgetPages[id] ?: 0
+        val pageRows = widgetRowsForPage(hostedWidgetIds.filter { hostedWidgetPages[it] == page }, homeCellHeightDp.floatValue)
+        if (pageRows * 4 + appCells > 28) {
+            hostedWidgetHeights[id] = oldHeight
+            Toast.makeText(this, "No hay espacio para cambiar la altura de este widget", Toast.LENGTH_SHORT).show()
             return
         }
-        hostedWidgetHeights[id] = newHeight
         getSharedPreferences("nexo_widgets", MODE_PRIVATE).edit().putInt("height_$id", newHeight).apply()
-        val allocatedHeight = widgetSpanHeightDp(
-            widgetRowsForHeight(newHeight, homeCellHeightDp.floatValue),
-            homeCellHeightDp.floatValue
-        ).toInt()
-        AppWidgetManager.getInstance(this).updateAppWidgetOptions(id, Bundle().apply {
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, allocatedHeight)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
-        })
+        persistWidgetState()
+        applyWidgetOptions(id)
     }
 
     fun createWidgetHostView(id: Int): AppWidgetHostView? = runCatching {
         val manager = AppWidgetManager.getInstance(this)
         val info = manager.getAppWidgetInfo(id) ?: return null
-        val widthDp = (resources.displayMetrics.widthPixels / resources.displayMetrics.density).toInt() - 48
-        manager.updateAppWidgetOptions(id, Bundle().apply {
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, widthDp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, widthDp)
-            val requestedHeight = widgetHeightDp(id)
-            val allocatedHeight = widgetSpanHeightDp(
-                widgetRowsForHeight(requestedHeight, homeCellHeightDp.floatValue),
-                homeCellHeightDp.floatValue
-            ).toInt()
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, allocatedHeight)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, allocatedHeight)
-        })
+        applyWidgetOptions(id)
         widgetHost.createView(this, id, info).apply { setAppWidget(id, info) }
     }.getOrNull()
 

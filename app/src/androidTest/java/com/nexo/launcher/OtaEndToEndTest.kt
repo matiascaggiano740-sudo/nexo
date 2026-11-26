@@ -42,6 +42,15 @@ class OtaEndToEndTest {
         Log.i(TAG, "E2E: UI surfaced HTTP 503 from controlled manifest endpoint")
         composeRule.onNodeWithText("Cerrar").performClick()
 
+        FixtureServer.mode.set(Mode.HTTP_NOT_FOUND)
+        openUpdater()
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithText("Todavía no hay una actualización pública de NEXO", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithText("Buscar actualizaciones").assertCountEquals(1)
+        Log.i(TAG, "E2E: missing public release is shown as an empty update state, not a generic error")
+        composeRule.onNodeWithText("Cerrar").performClick()
+
         FixtureServer.mode.set(Mode.BAD_HASH)
         openUpdater()
         assertAvailableRelease()
@@ -108,7 +117,7 @@ class OtaEndToEndTest {
         @JvmStatic @BeforeClass fun startControlledEndpoint() = FixtureServer.start()
         @JvmStatic @AfterClass fun stopControlledEndpoint() = FixtureServer.stop()
 
-        private enum class Mode { HTTP_ERROR, BAD_HASH, VALID }
+        private enum class Mode { HTTP_ERROR, HTTP_NOT_FOUND, BAD_HASH, VALID }
 
         private object FixtureServer {
             val mode = AtomicReference(Mode.HTTP_ERROR)
@@ -149,10 +158,13 @@ class OtaEndToEndTest {
                     Log.i(TAG, "E2E endpoint request: $request; mode=${mode.get()}")
                     when {
                         path.startsWith("/repos/matiascaggiano740-sudo/nexo/releases/latest") -> {
-                            if (mode.get() == Mode.HTTP_ERROR) respond(client, 503, "text/plain", "controlled outage".toByteArray())
-                            else {
-                                val json = """{"assets":[{"name":"nexo-update.json","browser_download_url":"$baseUrl/assets/nexo-update.json"}]}"""
-                                respond(client, 200, "application/vnd.github+json", json.toByteArray())
+                            when (mode.get()) {
+                                Mode.HTTP_ERROR -> respond(client, 503, "text/plain", "controlled outage".toByteArray())
+                                Mode.HTTP_NOT_FOUND -> respond(client, 404, "application/json", "{\"message\":\"Not Found\"}".toByteArray())
+                                else -> {
+                                    val json = """{"assets":[{"name":"nexo-update.json","browser_download_url":"$baseUrl/assets/nexo-update.json"}]}"""
+                                    respond(client, 200, "application/vnd.github+json", json.toByteArray())
+                                }
                             }
                         }
                         path.startsWith("/assets/nexo-update.json") -> {

@@ -6,7 +6,7 @@ import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
-const val DEFAULT_QUOTE = "Lo simple también es hermoso."
+const val DEFAULT_QUOTE = "Lo simple también es hermoso"
 
 private fun prefs(ctx: Context) = ctx.getSharedPreferences("nexo", Context.MODE_PRIVATE)
 

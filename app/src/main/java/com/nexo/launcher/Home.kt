@@ -16,6 +16,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -69,6 +70,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
@@ -218,6 +220,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var dragPreview by remember { mutableStateOf<Pair<AppItem, ComposeOffset>?>(null) }
+    var editingWidgetDragId by remember { mutableIntStateOf(-1) }
+    var trashTargetBounds by remember { mutableStateOf<ComposeRect?>(null) }
     var city by remember { mutableStateOf(savedCity(ctx)) }
     var weather by remember { mutableStateOf<WeatherInfo?>(null) }
     var editCity by remember { mutableStateOf(false) }
@@ -225,6 +229,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     var photo by remember { mutableStateOf<ImageBitmap?>(null) }
     var photoTick by remember { mutableStateOf(0) }
     var editCard by remember { mutableStateOf(false) }
+    var wallpaperDim by remember { mutableFloatStateOf(ctx.getSharedPreferences("nexo", 0).getFloat("wallpaper_dim", 0.04f).coerceIn(0f, 0.30f)) }
 
     fun dropAppOnDock(targetIndex: Int, payload: String) {
         val fromDock = payload.startsWith("dock:")
@@ -535,7 +540,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     Box(
         Modifier.fillMaxSize()
             .testTag("home-surface")
-            .background(Brush.verticalGradient(listOf(Color(0x55000000), Color(0x1A000000), Color(0x70000000))))
+            .background(Color.Black.copy(alpha = if (editingHome) wallpaperDim.coerceAtMost(0.12f) else wallpaperDim.coerceIn(0f, 0.30f)))
             .graphicsLayer { translationX = pageSwipeX }
             .pointerInput(homePages.size, editingHome, drawer) {
                 if (!editingHome && !drawer && homePages.size > 1) {
@@ -594,11 +599,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp)) {
             val pageWidgetIds = launcherActivity?.hostedWidgetIds?.filter { launcherActivity.hostedWidgetPages[it] == currentPage }.orEmpty()
-            val nativeWidgetRows = pageWidgetIds.sumOf { id ->
-                val height = launcherActivity?.widgetHeightDp(id) ?: 132
-                widgetRowsForHeight(height, launcherActivity?.homeCellHeightDp?.floatValue ?: 72f)
-            }.coerceAtMost(7)
-            val quoteRows = if (currentPage == 0) 2 else 0
+            val nativeWidgetRows = launcherActivity?.widgetRowsForPage(
+                pageWidgetIds, launcherActivity.homeCellHeightDp.floatValue
+            ) ?: 0
+            val quoteRows = if (currentPage == 0 && quote.isNotBlank()) 2 else 0
             val quoteItemCount = if (quoteRows > 0) 1 else 0
             val headerCellCount = 8
             val widgetCellOffset = nativeWidgetRows * 4
@@ -608,17 +612,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             val pageCapacity = (appEndCell - firstAppCell).coerceAtLeast(0)
             val pageAppCellCount = (if (homePackages.isEmpty() && currentPage == 0) defaultHomeApps.size else homePackages.count { it != "-" }) + headerCellCount + quoteCellCount
             val widgetLayoutKey = launcherActivity?.hostedWidgetIds?.joinToString(",") { id ->
-                "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}"
+                "$id:${launcherActivity.hostedWidgetPages[id] ?: 0}:${launcherActivity.widgetHeightDp(id)}:${launcherActivity.widgetColumnSpan(id)}"
             }.orEmpty()
             LaunchedEffect(homePages, widgetLayoutKey, apps, dockPackages, launcherActivity?.homeCellHeightDp?.floatValue, launcherActivity?.homeCellHeightMeasured?.value) {
                 if (apps.isEmpty() || launcherActivity?.homeCellHeightMeasured?.value != true) return@LaunchedEffect
                 val widgetRowsByPage = launcherActivity?.hostedWidgetIds.orEmpty().groupBy { id ->
                     launcherActivity?.hostedWidgetPages?.get(id) ?: 0
-                }.mapValues { (_, ids) -> ids.sumOf { id -> widgetRowsForHeight(launcherActivity?.widgetHeightDp(id) ?: 132, launcherActivity?.homeCellHeightDp?.floatValue ?: 72f) } }
+                }.mapValues { (_, ids) -> launcherActivity?.widgetRowsForPage(ids, launcherActivity.homeCellHeightDp.floatValue) ?: 0 }
                 val migrated = HomeGrid.normalize(
                     pages = homePages,
                     widgetRowsByPage = widgetRowsByPage,
                     defaultPackages = defaultHomeApps.map { it.pkg },
+                    quoteVisible = quote.isNotBlank(),
                 )
                 if (migrated != homePages) {
                     homePages = migrated
@@ -658,7 +663,13 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 else -> "home-cell-$currentPage-${index - 1 - pageWidgetIds.size}"
                             }
                         },
-                        span = { index -> if (index == 0 || index in 1..pageWidgetIds.size || (quoteItemCount > 0 && index == 1 + pageWidgetIds.size + pageCapacity)) GridItemSpan(maxLineSpan) else GridItemSpan(1) }
+                        span = { index ->
+                            when {
+                                index == 0 || (quoteItemCount > 0 && index == 1 + pageWidgetIds.size + pageCapacity) -> GridItemSpan(maxLineSpan)
+                                index in 1..pageWidgetIds.size -> GridItemSpan(launcherActivity?.widgetColumnSpan(pageWidgetIds[index - 1]) ?: maxLineSpan)
+                                else -> GridItemSpan(1)
+                            }
+                        }
                     ) { itemIndex ->
                     if (itemIndex == 0) {
                         HomeHeader(
@@ -675,8 +686,29 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         val widgetId = pageWidgetIds[itemIndex - 1]
                         val widgetHostView = remember(widgetId) { launcherActivity?.createWidgetHostView(widgetId) }
                         var showWidgetPageMenu by remember(widgetId) { mutableStateOf(false) }
+                        var widgetCoordinates by remember(widgetId) { mutableStateOf<LayoutCoordinates?>(null) }
                         val widgetRowsHeight = widgetRowsForHeight(launcherActivity?.widgetHeightDp(widgetId) ?: 132, cellHeight.value)
-                        Box(Modifier.fillMaxWidth().height(widgetSpanHeightDp(widgetRowsHeight, cellHeight.value, gridGap.value).dp)) {
+                        Box(Modifier.fillMaxWidth().height(widgetSpanHeightDp(widgetRowsHeight, cellHeight.value, gridGap.value).dp)
+                            .testTag("home-widget-$widgetId")
+                            .onGloballyPositioned { widgetCoordinates = it }
+                            .pointerInput(widgetId) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                    val held = awaitLongPressOrCancellation(down.id, pass = PointerEventPass.Initial) ?: return@awaitEachGesture
+                                    editingHome = true
+                                    editingWidgetDragId = widgetId
+                                    var rootPosition = widgetCoordinates?.localToRoot(held.position) ?: held.position
+                                    try {
+                                        drag(held.id) { change ->
+                                            change.consume()
+                                            rootPosition = widgetCoordinates?.localToRoot(change.position) ?: change.position
+                                        }
+                                        if (trashTargetBounds?.contains(rootPosition) == true) launcherActivity?.removeWidget(widgetId)
+                                    } finally {
+                                        editingWidgetDragId = -1
+                                    }
+                                }
+                            }) {
                             Surface(color = Color.White.copy(alpha = 0.92f), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxSize()) {
                                 if (widgetHostView != null) {
                                     AndroidView(factory = { widgetHostView }, modifier = Modifier.fillMaxSize())
@@ -686,27 +718,46 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     }
                                 }
                             }
-                            if (editingHome) Row(Modifier.align(Alignment.TopEnd).background(Color.White.copy(alpha = 0.88f), RoundedCornerShape(20.dp))) {
-                                TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, -1) }) { Text("↑") }
-                                Box {
-                                    TextButton(onClick = { showWidgetPageMenu = true }) { Text("Página") }
-                                    DropdownMenu(expanded = showWidgetPageMenu, onDismissRequest = { showWidgetPageMenu = false }) {
-                                        homePages.indices.forEach { destination -> DropdownMenuItem(
-                                            text = { Text("Página ${destination + 1}") },
-                                            onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) defaultHomeApps.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + 8 + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
-                                        ) }
+                            if (editingHome) Surface(color = Color(0xD9212226), shape = RoundedCornerShape(22.dp),
+                                shadowElevation = 8.dp, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                                Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, -1) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) { Text("↑", color = Color.White) }
+                                    Box {
+                                        TextButton(onClick = { showWidgetPageMenu = true }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) { Text("Página", color = Color.White, fontSize = 11.sp) }
+                                        DropdownMenu(expanded = showWidgetPageMenu, onDismissRequest = { showWidgetPageMenu = false }) {
+                                            homePages.indices.forEach { destination -> DropdownMenuItem(
+                                                text = { Text("Página ${destination + 1}") },
+                                                onClick = { launcherActivity?.moveWidgetToPage(widgetId, destination, homePages.size, (if (homePages.getOrNull(destination).orEmpty().isEmpty() && destination == 0) defaultHomeApps.size else homePages.getOrNull(destination).orEmpty().count { it != "-" }) + 8 + if (destination == 0) 8 else 0); showWidgetPageMenu = false }
+                                            ) }
+                                        }
                                     }
+                                    TextButton(enabled = launcherActivity?.canResizeWidget(widgetId) == true, onClick = { launcherActivity?.resizeWidget(widgetId, -90, pageAppCellCount) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) { Text("−", color = Color.White) }
+                                    TextButton(enabled = launcherActivity?.canResizeWidgetWidth(widgetId) == true,
+                                        onClick = { launcherActivity?.resizeWidgetWidth(widgetId, -1, pageAppCellCount) },
+                                        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) { Text("↔−", color = Color.White, fontSize = 10.sp) }
+                                    Box(Modifier.size(26.dp).clip(RoundedCornerShape(50)).background(Color(0xFFE5E8EF))
+                                        .testTag("remove-widget-$widgetId").clickable { launcherActivity?.removeWidget(widgetId) }, contentAlignment = Alignment.Center) {
+                                        Text("×", color = Color(0xFF343943), fontSize = 17.sp, lineHeight = 17.sp)
+                                    }
+                                    TextButton(enabled = launcherActivity?.canResizeWidgetWidth(widgetId) == true,
+                                        onClick = { launcherActivity?.resizeWidgetWidth(widgetId, 1, pageAppCellCount) },
+                                        contentPadding = PaddingValues(horizontal = 5.dp, vertical = 2.dp)) { Text("↔+", color = Color.White, fontSize = 10.sp) }
+                                    TextButton(enabled = launcherActivity?.canResizeWidget(widgetId) == true, onClick = { launcherActivity?.resizeWidget(widgetId, 90, pageAppCellCount) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) { Text("＋", color = Color.White) }
+                                    TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) { Text("↓", color = Color.White) }
                                 }
-                                TextButton(enabled = launcherActivity?.canResizeWidget(widgetId) == true, onClick = { launcherActivity?.resizeWidget(widgetId, -90, pageAppCellCount) }) { Text("−") }
-                                TextButton(onClick = { launcherActivity?.removeWidget(widgetId) }) { Text("Quitar", color = Color(0xFFB3261E)) }
-                                TextButton(enabled = launcherActivity?.canResizeWidget(widgetId) == true, onClick = { launcherActivity?.resizeWidget(widgetId, 90, pageAppCellCount) }) { Text("＋") }
-                                TextButton(onClick = { launcherActivity?.reorderWidget(widgetId, 1) }) { Text("↓") }
                             }
                         }
                     } else if (quoteItemCount > 0 && itemIndex == 1 + pageWidgetIds.size + pageCapacity) {
                         Box(Modifier.fillMaxWidth().height(quoteHeight), contentAlignment = Alignment.Center) {
                             QuoteCard(quote, photo, onClick = { editCard = true },
-                                height = minOf(quoteHeight, 150.dp), modifier = Modifier.fillMaxWidth())
+                                height = minOf(quoteHeight, 150.dp), modifier = Modifier.fillMaxWidth().testTag("home-quote-card"))
+                            if (editingHome) Surface(
+                                color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
+                                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(25.dp)
+                                    .testTag("remove-home-quote").clickable {
+                                        saveQuote(ctx, ""); quote = ""
+                                    }
+                            ) { Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 17.sp, lineHeight = 17.sp) } }
                         }
                     } else {
                     val index = itemIndex - 1 - pageWidgetIds.size
@@ -950,12 +1001,11 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 onSelectPage = { page -> selectHomePage(page) },
                 onClose = { editingHome = false },
                 onWidget = {
-                    val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) defaultHomeApps.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + 8 + if (currentPage == 0) 8 else 0
-                    editingHome = false
+                    val quoteArea = if (currentPage == 0 && quote.isNotBlank()) 8 else 0
+                    val count = (if (homePages.getOrNull(currentPage).orEmpty().isEmpty() && currentPage == 0) defaultHomeApps.size else homePages.getOrNull(currentPage).orEmpty().count { it != "-" }) + 8 + quoteArea
                     launcherActivity?.launchWidgetPicker(currentPage, count)
                 },
                 onWallpaper = {
-                    editingHome = false
                     runCatching { ctx.startActivity(Intent(Intent.ACTION_SET_WALLPAPER)) }
                         .onFailure { Toast.makeText(ctx, "No se pudo abrir la selección de fondo", Toast.LENGTH_SHORT).show() }
                 },
@@ -969,9 +1019,26 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     selectHomePage(newPage)
                 },
                 onFolder = { showNewFolder = true },
-                onIcons = { editingHome = false; showIconThemeDialog = true },
-                onManage = { editingHome = false; showPageManager = true }
+                onIcons = { showIconThemeDialog = true },
+                onManage = { showPageManager = true },
+                onSettings = { showSettingsDialog = true },
+                onQuote = { editCard = true },
+                onEffect = { wallpaperDim = it },
+                showTrashTarget = editingHome || editingWidgetDragId >= 0 || dragPreview != null,
+                onTrashBoundsChanged = { trashTargetBounds = it }
             )
+        }
+        if (!editingHome && !drawer && dragPreview != null) Surface(
+            color = Color(0xD9212226), shape = RoundedCornerShape(24.dp), shadowElevation = 8.dp,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp)
+                .onGloballyPositioned { trashTargetBounds = it.boundsInRoot() }
+                .testTag("home-trash-target")
+        ) {
+            Row(Modifier.padding(horizontal = 17.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("▤", color = Color.White, fontSize = 16.sp)
+                Text("Soltá para quitar", color = Color.White, fontSize = 12.sp)
+            }
         }
         dragPreview?.let { (item, position) ->
             val density = LocalDensity.current.density
@@ -1101,8 +1168,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         var t by remember { mutableStateOf(quote) }
         AlertDialog(
             onDismissRequest = { editCard = false }, title = { Text("Tu tarjeta") },
-            text = { Column { OutlinedTextField(t, { t = it.take(80) }, label = { Text("Frase") }, modifier = Modifier.fillMaxWidth()); TextButton({ picker.launch(arrayOf("image/*")) }) { Text("Elegir foto de la galería") } } },
-            confirmButton = { TextButton({ val v = t.trim().ifBlank { DEFAULT_QUOTE }; saveQuote(ctx, v); quote = v; editCard = false }) { Text("Guardar") } },
+            text = { Column { OutlinedTextField(t, { t = it.take(80) }, label = { Text("Frase (vacía para quitar)") }, modifier = Modifier.fillMaxWidth()); TextButton({ picker.launch(arrayOf("image/*")) }) { Text("Elegir foto de la galería") } } },
+            confirmButton = { TextButton({ val v = t.trim(); saveQuote(ctx, v); quote = v; editCard = false }) { Text("Guardar") } },
             dismissButton = { TextButton({ editCard = false }) { Text("Cancelar") } },
         )
     }
@@ -1606,80 +1673,123 @@ private fun HomeEditOverview(
     onAddPage: () -> Unit,
     onFolder: () -> Unit,
     onIcons: () -> Unit,
-    onManage: () -> Unit
+    onManage: () -> Unit,
+    onSettings: () -> Unit,
+    onQuote: () -> Unit,
+    onEffect: (Float) -> Unit,
+    showTrashTarget: Boolean,
+    onTrashBoundsChanged: (ComposeRect) -> Unit
 ) {
-    Column(
-        Modifier.fillMaxSize()
-            .background(Color(0xF2171717))
-            .clickable(onClick = {})
-            .statusBarsPadding().navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Editar inicio", color = Cream, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                Text("Elegí, agregá o quitá pantallas", color = Cream.copy(alpha = 0.72f), fontSize = 13.sp)
-            }
-            TextButton(onClick = onClose, modifier = Modifier.testTag("finish-home-edit"), shape = RoundedCornerShape(22.dp)) {
-                Text("Listo", color = Color(0xFFD6AE70), fontWeight = FontWeight.SemiBold)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier.fillMaxWidth().weight(1f).horizontalScroll(rememberScrollState()).testTag("home-edit-pages-row"),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+    var showConfigure by remember { mutableStateOf(false) }
+    var showEffects by remember { mutableStateOf(false) }
+    var overlayEntered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { overlayEntered = true }
+    val editMotion by animateFloatAsState(if (overlayEntered) 1f else 0.94f, tween(150), label = "poco-edit-entry")
+    val context = LocalContext.current
+    var dim by remember(context) { mutableFloatStateOf(context.getSharedPreferences("nexo", 0).getFloat("wallpaper_dim", 0.04f).coerceIn(0f, 0.30f)) }
+    Box(Modifier.fillMaxSize().graphicsLayer {
+        alpha = editMotion
+        scaleX = 0.98f + 0.02f * editMotion
+        scaleY = 0.98f + 0.02f * editMotion
+    }.testTag("home-edit-overlay")) {
+        // Keep the live wallpaper, icons, widgets and dock visible; only add a light edit tint.
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.025f)))
+        if (showTrashTarget) Surface(
+            color = Color(0xD9212226), shape = RoundedCornerShape(24.dp), shadowElevation = 6.dp,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp)
+                .onGloballyPositioned { onTrashBoundsChanged(it.boundsInRoot()) }
+                .testTag("home-trash-target")
         ) {
-            pages.forEachIndexed { index, page ->
-                HomeMiniPagePreview(
-                    index = index,
-                    selected = index == currentPage,
-                    packages = if (index == 0 && page.isEmpty()) List(8) { "-" } + defaultPackages else page,
-                    apps = apps,
-                    folders = folders,
-                    dockPackages = dockPackages,
-                    quote = quote,
-                    timeText = timeText,
-                    dateText = dateText,
-                    weatherText = weatherText,
-                    widgetIds = widgetIdsByPage[index].orEmpty(),
-                    canDelete = pages.size > 1,
-                    onDeletePage = { onDeletePage(index) },
-                    onRemoveApp = { packageName -> onRemoveApp(index, packageName) },
-                    onClick = { onSelectPage(index) },
-                    modifier = Modifier.fillMaxHeight(0.94f).width(205.dp)
-                )
+            Row(Modifier.padding(horizontal = 17.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("▤", color = Color.White, fontSize = 16.sp)
+                Text("Soltá para quitar", color = Color.White, fontSize = 12.sp)
             }
         }
         Surface(
-            color = Color.White.copy(alpha = 0.055f),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 3.dp, bottom = 8.dp)
+            color = Color(0xFF2788F5),
+            shape = RoundedCornerShape(28.dp),
+            shadowElevation = 8.dp,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 10.dp, end = 22.dp)
+                .height(44.dp).testTag("finish-home-edit").clickable(onClick = onClose)
         ) {
-            Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("i", color = Color(0xFFD6AE70), fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(end = 10.dp))
-                Text(
-                    "Tocá − junto a una app para quitarla. × borra la página; Listo vuelve al inicio.",
-                    color = Cream.copy(alpha = 0.76f), fontSize = 11.sp, lineHeight = 14.sp,
-                    modifier = Modifier.weight(1f), maxLines = 2, softWrap = true
-                )
+            Box(Modifier.padding(horizontal = 24.dp), contentAlignment = Alignment.Center) {
+                Text("Listo", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeEditActionCard("▦", "Widgets", "Añadir al inicio", Modifier.weight(1f), onWidget, primary = true, testTag = "edit-widgets")
-                HomeEditActionCard("◒", "Fondo", "Cambiar fondo", Modifier.weight(1f), onWallpaper, testTag = "edit-wallpaper")
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal = 25.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (pages.size > 1) pages.indices.forEach { page ->
+                    Box(Modifier.size(if (page == currentPage) 9.dp else 7.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(if (page == currentPage) Color.White else Color.White.copy(alpha = 0.55f))
+                        .testTag("edit-select-page-$page")
+                        .clickable { onSelectPage(page) })
+                }
+                Box(Modifier.size(28.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.40f))
+                    .testTag("add-home-page").clickable(onClick = onAddPage), contentAlignment = Alignment.Center) {
+                    Text("+", color = Color.White, fontSize = 19.sp, lineHeight = 19.sp)
+                }
+                if (pages.size > 1) {
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(50)).background(Color(0xFFE5E8EF))
+                        .testTag("edit-delete-page").clickable { onDeletePage(currentPage) }, contentAlignment = Alignment.Center) {
+                        Text("−", color = Color(0xFF343943), fontSize = 18.sp, lineHeight = 18.sp)
+                    }
+                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeEditActionCard("+", "+ Página", "Crear pantalla", Modifier.weight(1f), onAddPage, testTag = "add-home-page")
-                HomeEditActionCard("▣", "+ Carpeta", "Agrupar apps", Modifier.weight(1f), onFolder, testTag = "edit-folder")
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HomeEditActionCard("◉", "Iconos", "Estilo de iconos", Modifier.weight(1f), onIcons, testTag = "icon-theme-open")
-                HomeEditActionCard("☷", "Páginas", "Ordenar o quitar", Modifier.weight(1f), onManage, testTag = "edit-pages")
+            Surface(color = Color(0xD9212226), shape = RoundedCornerShape(30.dp), shadowElevation = 14.dp,
+                modifier = Modifier.fillMaxWidth().height(86.dp).testTag("poco-edit-toolbar")) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    EditToolbarAction("▧", "Fondo", "edit-wallpaper", onWallpaper)
+                    EditToolbarAction("◌", "Efectos", "edit-effects") { showEffects = true }
+                    EditToolbarAction("▦", "Widgets", "edit-widgets", onWidget)
+                    EditToolbarAction("⚙", "Configurar", "edit-configure") { showConfigure = true }
+                }
             }
         }
+    }
+    if (showEffects) AlertDialog(
+        onDismissRequest = { showEffects = false },
+        title = { Text("Efectos del fondo") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Original" to 0f, "Suave" to 0.10f, "Oscuro" to 0.22f).forEach { (label, value) ->
+                    TextButton(onClick = {
+                        dim = value
+                        context.getSharedPreferences("nexo", 0).edit().putFloat("wallpaper_dim", value).apply()
+                        onEffect(value)
+                        showEffects = false
+                    }, modifier = Modifier.fillMaxWidth().testTag("wallpaper-effect-${label.lowercase()}")) {
+                        Text(if (kotlin.math.abs(dim - value) < 0.01f) "✓  $label" else label)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showEffects = false }) { Text("Cerrar") } }
+    )
+    if (showConfigure) AlertDialog(
+        onDismissRequest = { showConfigure = false },
+        title = { Text("Configurar inicio") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("Páginas" to onManage, "Carpeta" to onFolder, "Iconos" to onIcons,
+                    "Frase e imagen" to onQuote, "Ajustes de NEXO" to onSettings).forEach { (label, action) ->
+                    TextButton(onClick = { showConfigure = false; action() }, modifier = Modifier.fillMaxWidth()) { Text(label) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { showConfigure = false }) { Text("Cerrar") } }
+    )
+}
+
+@Composable
+private fun EditToolbarAction(glyph: String, title: String, tag: String, onClick: () -> Unit) {
+    Column(Modifier.width(76.dp).fillMaxHeight().testTag(tag).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(glyph, color = Color.White, fontSize = 24.sp, lineHeight = 26.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(title, color = Color.White, fontSize = 11.sp, maxLines = 1)
     }
 }
 
@@ -1942,9 +2052,9 @@ private fun DockCell(
     ), contentAlignment = Alignment.Center) {
         if (app != null) AppIcon(app, 52.dp, Color.White, showLabel = false,
             dragPayload = "dock:${app.pkg}", testTag = "dock-app-${app.pkg}")
-        if (editing && app != null) Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+        if (editing && app != null) Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
             modifier = Modifier.align(Alignment.TopEnd).size(20.dp).clickable { onRemove() }) {
-            Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 15.sp, lineHeight = 15.sp) }
+            Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 15.sp, lineHeight = 15.sp) }
         }
     }
 }
@@ -1972,6 +2082,8 @@ private fun HomeAppCell(
     onRemove: (String) -> Unit,
     onDragPreview: (AppItem?, ComposeOffset?) -> Unit = { _, _ -> },
     isDragged: Boolean = false,
+    trashBounds: ComposeRect? = null,
+    onTrashDrop: (String) -> Unit = {},
     onDrop: (String, Int) -> Unit
 ) {
     val dropTarget = remember(editingHome, index, onDrop) {
@@ -2016,7 +2128,8 @@ private fun HomeAppCell(
                         val homeDestination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         val dockDestination = dockCellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         val pageDestination = pageIndicatorBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
-                        if (homeDestination != null) onDrop(dragPayload, homeDestination)
+                        if (trashBounds?.contains(rootPosition) == true) onTrashDrop(dragPayload)
+                        else if (homeDestination != null) onDrop(dragPayload, homeDestination)
                         else if (dockDestination != null && app != null) onDockDrop(dragPayload, dockDestination)
                         else if (pageDestination != null) onPageDrop(dragPayload, pageDestination)
                     } else {
@@ -2055,17 +2168,17 @@ private fun HomeAppCell(
                 modifier = Modifier.graphicsLayer { alpha = if (isDragged) 0.28f else 1f }
             )
             if (editingHome) {
-                Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+                Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove(app.pkg) }) {
-                    Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 16.sp, lineHeight = 16.sp) }
+                    Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 16.sp, lineHeight = 16.sp) }
                 }
             }
         } else if (folderName != null) {
             FolderIcon(folderName, folderApps, iconSize, onFolderClick)
             if (editingHome) {
-                Surface(color = Color(0xFFB3261E), shape = RoundedCornerShape(50),
+                Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable { onRemove("folder:$folderName") }) {
-                    Box(contentAlignment = Alignment.Center) { Text("−", color = Color.White, fontSize = 16.sp, lineHeight = 16.sp) }
+                    Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 16.sp, lineHeight = 16.sp) }
                 }
                 TextButton(onClick = onFolderEdit, modifier = Modifier.align(Alignment.BottomCenter)) {
                     Text("Editar", color = Color.White, fontSize = 9.sp)

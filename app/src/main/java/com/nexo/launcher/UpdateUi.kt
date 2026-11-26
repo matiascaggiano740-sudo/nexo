@@ -200,8 +200,13 @@ internal fun UpdateDialog(onDismiss: () -> Unit) {
                 result = manager.check()
                 update = (result as? UpdateCheckResult.Available)?.update
                 message = if (update == null) "NEXO ya está actualizado." else "Hay una actualización disponible."
-            } catch (t: Throwable) { error = t.message ?: "No se pudo consultar el servidor." }
-            finally { busy = false }
+            } catch (t: Throwable) {
+                if (t is NoPublishedNexoReleaseException) {
+                    error = null
+                    result = runCatching { UpdateCheckResult.Current(manager.installedVersionCode()) }.getOrNull()
+                    message = "Todavía no hay una actualización pública de NEXO. Cuando publiquemos una, aparecerá aquí."
+                } else error = t.message ?: "No se pudo consultar el servidor."
+            } finally { busy = false }
         }
     }
 

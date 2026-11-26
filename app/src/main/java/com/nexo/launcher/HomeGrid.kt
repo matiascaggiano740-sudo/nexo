@@ -56,6 +56,7 @@ internal object HomeGrid {
         pages: List<List<String>>,
         widgetRowsByPage: Map<Int, Int>,
         defaultPackages: List<String>,
+        quoteVisible: Boolean = true,
     ): List<List<String>> {
         val sourcePages = pages.ifEmpty { listOf(emptyList()) }
         val normalizedPages = mutableListOf<List<String>>()
@@ -68,7 +69,7 @@ internal object HomeGrid {
             val source = if (pageIndex == 0 && savedPage.isEmpty()) defaultPackages else savedPage
             val widgetRows = (widgetRowsByPage[pageIndex] ?: 0).coerceAtLeast(0)
             val firstAvailable = (HEADER_CELLS + widgetRows * COLUMN_COUNT).coerceIn(0, CELL_COUNT)
-            val reservedQuoteCells = if (pageIndex == 0) QUOTE_CELLS else 0
+            val reservedQuoteCells = if (pageIndex == 0 && quoteVisible) QUOTE_CELLS else 0
             val endAvailable = (CELL_COUNT - reservedQuoteCells).coerceAtLeast(firstAvailable)
             val slots = MutableList(CELL_COUNT) { "-" }
 
