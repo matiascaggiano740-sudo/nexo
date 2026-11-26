@@ -121,17 +121,17 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("remove-home-app-page-1-$packageName").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("remove-home-app-page-1-$packageName", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("remove-home-app-page-1-$packageName").performClick()
+        composeRule.onNodeWithTag("remove-home-app-page-1-$packageName", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         var pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
             .getString("pages", "").orEmpty().split("~").map { it.split("|") }
         assertEquals("Removing an app from a created page must clear only that slot", "-", pages[1][8])
         assertEquals("Removing from another page must preserve the Home app", packageName, pages[0][8])
 
-        composeRule.onNodeWithTag("remove-home-app-page-0-$packageName").performClick()
+        composeRule.onNodeWithTag("remove-home-app-page-0-$packageName", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
             .getString("pages", "").orEmpty().split("~").map { it.split("|") }
