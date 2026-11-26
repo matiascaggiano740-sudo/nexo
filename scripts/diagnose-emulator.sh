@@ -155,6 +155,8 @@ monitor_test() {
 
 methods=(
   drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned
+  homeSearchIsCompactCenteredAboveTheDock
+  folderPreviewUsesNineAlignedIconsAndFolderEditingHasNoStaticLabel
   homeEditUsesLivePocoStyleOverlayAndNoDoubleTapLock
   doubleTapEmptyHomeCellDoesNotTriggerLockFeature
   activityAlwaysRequestsTheLiveAndroidWallpaper

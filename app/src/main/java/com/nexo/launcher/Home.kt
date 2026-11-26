@@ -793,7 +793,6 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         folderName = folderName,
                         folderApps = folderApps,
                         onFolderClick = { if (folderName != null) openFolder = "user:$folderName" },
-                        onFolderEdit = { if (folderName != null) userFolders.find { it.first == folderName }?.let { folderEditor = it } },
                         index = logicalIndex,
                         editingHome = editingHome,
                         cellHeight = cellHeight,
@@ -942,22 +941,23 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Surface(
-                    color = Glass,
-                    shape = RoundedCornerShape(23.dp),
-                    modifier = Modifier.weight(1f).height(48.dp).clickable { drawer = true }
+                    color = Color(0xA62D2B2A),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.widthIn(min = 112.dp).height(34.dp)
+                        .testTag("open-app-drawer").clickable { drawer = true }
                 ) {
-                    Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Buscar apps y web", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { drawer = true }, modifier = Modifier.testTag("open-app-drawer"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                            Text("Apps", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
+                    Row(Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Text("⌕", color = Color.White, fontSize = 18.sp, lineHeight = 20.sp)
+                        Spacer(Modifier.width(5.dp))
+                        Text("Buscar", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(7.dp))
 
             Surface(
                 color = Glass,
@@ -1540,18 +1540,27 @@ fun QuoteCard(
 fun FolderIcon(name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit, dragPayload: String? = null) {
     val dragView = LocalView.current
     val density = LocalDensity.current.density
+    val previewIconSize = ((size - 10.dp) / 3).coerceAtLeast(12.dp)
     Column(Modifier.width(size + 12.dp).combinedClickable(onClick = onClick, onLongClick = {
         if (dragPayload != null && apps.isNotEmpty()) {
             val clip = ClipData.newPlainText("nexo-folder", dragPayload)
             dragView.startDragAndDrop(clip, AppIconDragShadowBuilder(dragView, apps.first().icon.asAndroidBitmap(), (size.value * density).toInt().coerceAtLeast(48)), dragPayload, View.DRAG_FLAG_GLOBAL)
         }
-    }), horizontalAlignment = Alignment.CenterHorizontally) {
+    }).testTag("home-folder-$name"), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size)) {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(7.dp)) {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                    apps.take(4).chunked(2).forEach { r ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            r.forEach { item -> Image(item.icon, null, Modifier.size(20.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop) }
+            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(5.dp)) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
+                    (0 until 3).forEach { rowIndex ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            (0 until 3).forEach { columnIndex ->
+                                val appIndex = rowIndex * 3 + columnIndex
+                                val item = apps.getOrNull(appIndex)
+                                if (item != null) Image(item.icon, null,
+                                    Modifier.size(previewIconSize).clip(RoundedCornerShape(previewIconSize * 0.25f))
+                                        .testTag("folder-preview-$name-$appIndex"), contentScale = ContentScale.Crop)
+                                else Spacer(Modifier.size(previewIconSize))
+                            }
                         }
                     }
                 }
@@ -1573,10 +1582,15 @@ fun FolderPanel(name: String, apps: List<AppItem>, close: () -> Unit, onEdit: ((
                 .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(32.dp))
                 .pointerInput(Unit) { detectTapGestures { } }.padding(22.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(name, color = Brown, fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                if (onEdit != null) TextButton(onClick = onEdit) { Text("Editar") }
-            }
+            Text(
+                name,
+                color = Brown,
+                fontSize = 30.sp,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth().testTag("folder-panel-title-$name")
+                    .combinedClickable(onClick = {}, onLongClick = { onEdit?.invoke() })
+            )
             Spacer(Modifier.height(18.dp))
                         Column(
                 Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
@@ -1991,10 +2005,16 @@ private fun HomeMiniPagePreview(
                                         }
                                     }
                                     folderName != null -> {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                                            folderApps.take(2).forEach { pkg ->
-                                                apps.find { it.pkg == pkg }?.let { item ->
-                                                    Image(item.icon, null, Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)), contentScale = ContentScale.Crop)
+                                        Column(Modifier.size(23.dp), verticalArrangement = Arrangement.SpaceEvenly) {
+                                            (0 until 3).forEach { rowIndex ->
+                                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                                    (0 until 3).forEach { columnIndex ->
+                                                        val folderPackage = folderApps.getOrNull(rowIndex * 3 + columnIndex)
+                                                        val folderApp = folderPackage?.let { pkg -> apps.find { it.pkg == pkg } }
+                                                        if (folderApp != null) Image(folderApp.icon, null,
+                                                            Modifier.size(6.dp).clip(RoundedCornerShape(1.5.dp)), contentScale = ContentScale.Crop)
+                                                        else Spacer(Modifier.size(6.dp))
+                                                    }
                                                 }
                                             }
                                         }
@@ -2012,8 +2032,15 @@ private fun HomeMiniPagePreview(
                     Text(quote, color = Cream, fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
                 }
             }
-            Surface(color = Color.White.copy(alpha = 0.13f), shape = RoundedCornerShape(11.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(22.dp).clickable(onClick = onClick)) {
-                Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) { Text("Buscar apps y web", color = Cream.copy(alpha = 0.8f), fontSize = 7.sp) }
+            Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+                Surface(color = Color.White.copy(alpha = 0.16f), shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.width(76.dp).height(20.dp).clickable(onClick = onClick)) {
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        Text("⌕", color = Cream.copy(alpha = 0.9f), fontSize = 10.sp)
+                        Spacer(Modifier.width(3.dp))
+                        Text("Buscar", color = Cream.copy(alpha = 0.9f), fontSize = 7.sp)
+                    }
+                }
             }
             Row(Modifier.fillMaxWidth().padding(top = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 repeat(4) { i ->
@@ -2149,7 +2176,6 @@ private fun HomeAppCell(
     folderName: String? = null,
     folderApps: List<AppItem> = emptyList(),
     onFolderClick: () -> Unit = {},
-    onFolderEdit: () -> Unit = {},
     index: Int,
     editingHome: Boolean,
     cellHeight: Dp,
@@ -2264,9 +2290,7 @@ private fun HomeAppCell(
                     modifier = Modifier.align(Alignment.TopEnd).size(22.dp).testTag("home-remove-folder-$index-$folderName").clickable { onRemove("folder:$folderName") }) {
                     Box(contentAlignment = Alignment.Center) { Text("×", color = Color(0xFF343943), fontSize = 16.sp, lineHeight = 16.sp) }
                 }
-                TextButton(onClick = onFolderEdit, modifier = Modifier.align(Alignment.BottomCenter)) {
-                    Text("Editar", color = Color.White, fontSize = 9.sp)
-                }
+
             }
         }
     }

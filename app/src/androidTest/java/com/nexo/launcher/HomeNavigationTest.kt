@@ -47,6 +47,60 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun homeSearchIsCompactCenteredAboveTheDock() {
+        val search = composeRule.onNodeWithTag("open-app-drawer").fetchSemanticsNode().boundsInRoot
+        val dock = composeRule.onNodeWithTag("dock-cell-0").fetchSemanticsNode().boundsInRoot
+        val home = composeRule.onNodeWithTag("home-surface").fetchSemanticsNode().boundsInRoot
+        val density = composeRule.activity.resources.displayMetrics.density
+        assertTrue("Home search should be a compact POCO-style pill, not a full-width field: $search", search.width <= 160f * density)
+        assertTrue("Home search should be centered", kotlin.math.abs(search.center.x - home.center.x) < 2f * density)
+        assertTrue("Home search should sit directly above the dock", search.bottom <= dock.top && dock.top - search.bottom < 24f * density)
+        composeRule.onNodeWithText("Buscar").assertExists()
+    }
+
+    @Test
+    fun folderPreviewUsesNineAlignedIconsAndFolderEditingHasNoStaticLabel() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val packages = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(9)
+        assertEquals("The emulator should expose nine launchable apps for a 3x3 folder preview", 9, packages.size)
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalFolders = prefs.getString("user_folders", null)
+        val originalCurrentPage = prefs.getInt("current_page", 0)
+        val page = MutableList(28) { "-" }.apply { this[8] = "folder:Social" }
+        val quotedPackages = packages.joinToString(",") { "\"$it\"" }
+        prefs.edit().putString("user_folders", "[{\"name\":\"Social\",\"packages\":[$quotedPackages]}]")
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        try {
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-Social").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onAllNodesWithTag("folder-preview-Social-0").assertCountEquals(1)
+            composeRule.onAllNodesWithTag("folder-preview-Social-8").assertCountEquals(1)
+            val first = composeRule.onNodeWithTag("folder-preview-Social-0").fetchSemanticsNode().boundsInRoot
+            val second = composeRule.onNodeWithTag("folder-preview-Social-1").fetchSemanticsNode().boundsInRoot
+            val third = composeRule.onNodeWithTag("folder-preview-Social-2").fetchSemanticsNode().boundsInRoot
+            assertTrue("Folder preview apps should be larger than the old cramped 10dp thumbnails", first.width > 12f * composeRule.activity.resources.displayMetrics.density)
+            assertTrue("Folder preview icons should be evenly spaced", kotlin.math.abs((second.center.x - first.center.x) - (third.center.x - second.center.x)) < 2f)
+            composeRule.onNodeWithTag("home-folder-Social").performClick()
+            composeRule.onAllNodesWithText("Editar").assertCountEquals(0)
+            composeRule.onNodeWithTag("folder-panel-title-Social").performTouchInput { longClick() }
+            composeRule.onNodeWithText("Editar carpeta").assertExists()
+            composeRule.onNodeWithText("Cancelar").performClick()
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
+            edit.putInt("current_page", originalCurrentPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
     fun homeEditUsesLivePocoStyleOverlayAndNoDoubleTapLock() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitForIdle()
