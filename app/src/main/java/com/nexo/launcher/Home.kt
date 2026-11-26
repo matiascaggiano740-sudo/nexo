@@ -694,7 +694,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             .pointerInput(widgetId) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                    val held = awaitLongPressOrCancellation(down.id, pass = PointerEventPass.Initial) ?: return@awaitEachGesture
+                                    val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
                                     editingHome = true
                                     editingWidgetDragId = widgetId
                                     var rootPosition = widgetCoordinates?.localToRoot(held.position) ?: held.position
