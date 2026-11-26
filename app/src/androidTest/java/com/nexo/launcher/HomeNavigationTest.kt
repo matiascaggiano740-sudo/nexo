@@ -132,7 +132,7 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun appsCanBeRemovedFromHomeAndCreatedPagesWithoutLosingOtherPages() {
+    fun appsCanBeDraggedToTrashFromHomeAndCreatedPagesWithoutLosingOtherPages() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val packageNames = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
             .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(2)
@@ -148,23 +148,39 @@ class HomeNavigationTest {
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
+        fun dragVisibleAppToTrash() {
+            val node = composeRule.onAllNodesWithTag("home-page-app").get(0)
+            val bounds = node.fetchSemanticsNode().boundsInRoot
+            val trash = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
+            node.performTouchInput {
+                val origin = bounds.center - bounds.topLeft
+                val destination = trash - bounds.topLeft
+                down(origin)
+                advanceEventTime(700)
+                for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
+                up()
+            }
+            composeRule.waitForIdle()
+        }
         composeRule.onNodeWithTag("edit-select-page-1").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-remove-app-8-$createdPageApp", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("home-remove-app-8-$createdPageApp", useUnmergedTree = true).performClick()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        dragVisibleAppToTrash()
         var pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
-        assertEquals("The created-page app is removed", "-", pages[1][8])
-        assertEquals("Home app survives removal on the created page", homeApp, pages[0][8])
+        assertEquals("Dragging to the bin removes the app from its created page", "-", pages[1][8])
+        assertEquals("The Home app survives removal from the created page", homeApp, pages[0][8])
+
         composeRule.onNodeWithTag("edit-select-page-0").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-remove-app-8-$homeApp", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("home-remove-app-8-$homeApp", useUnmergedTree = true).performClick()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
+        dragVisibleAppToTrash()
         pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
-        assertEquals("Home app is removed and persisted", "-", pages[0][8])
-        assertEquals("Created-page state remains intact", "-", pages[1][8])
+        assertEquals("Dragging to the bin removes the Home app and persists it", "-", pages[0][8])
+        assertEquals("The created page remains unchanged", "-", pages[1][8])
         composeRule.onNodeWithTag("finish-home-edit").performClick()
     }
 
     @Test
-    fun longPressingHomeAppDoesNotEnterPageEdit() {
+    fun longPressingHomeAppEntersPocoEditModeWithoutLaunchingIt() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val appPackage = composeRule.activity.packageManager
             .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
@@ -185,8 +201,10 @@ class HomeNavigationTest {
 
         composeRule.onAllNodesWithTag("home-page-app").get(0).performTouchInput { longClick() }
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithTag("finish-home-edit").assertCountEquals(0)
+        composeRule.onNodeWithTag("finish-home-edit").assertExists()
+        composeRule.onNodeWithTag("home-trash-target").assertExists()
         assertTrue("The home app should remain visible", composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty())
+        composeRule.onNodeWithTag("finish-home-edit").performClick()
     }
 
     @Test
@@ -368,9 +386,13 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.onNodeWithTag("edit-configure").performClick()
         composeRule.onNodeWithText("Páginas").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("page-manager-delete-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("page-manager-delete-0", useUnmergedTree = true).performClick()
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
+        composeRule.onNodeWithTag("edit-configure").performClick()
+        composeRule.onNodeWithText("Páginas").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("page-manager-delete-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("page-manager-delete-0", useUnmergedTree = true).performClick()
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
@@ -406,9 +428,17 @@ class HomeNavigationTest {
         }
         val widgetTag = "home-widget-${allocatedId.get()}"
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag(widgetTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("remove-widget-${allocatedId.get()}").fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("remove-widget-${allocatedId.get()}").performClick()
+        val widgetNode = composeRule.onNodeWithTag(widgetTag, useUnmergedTree = true)
+        val source = widgetNode.fetchSemanticsNode().boundsInRoot
+        val dragTarget = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
+        widgetNode.performTouchInput {
+            val origin = source.center - source.topLeft
+            val target = dragTarget - source.topLeft
+            down(origin)
+            advanceEventTime(700)
+            for (step in 1..14) moveTo(origin + (target - origin) * (step / 14f), 35)
+            up()
+        }
         composeRule.waitUntil(5_000) { allocatedId.get() !in composeRule.activity.hostedWidgetIds }
         composeRule.activityRule.scenario.onActivity { activity ->
             assertEquals("Removing a widget must release its Android widget ID", null,
@@ -478,14 +508,14 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("edit-configure").performClick()
         composeRule.onNodeWithText("Páginas").performClick()
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("page-manager-delete-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.activityRule.scenario.onActivity { activity ->
             assertEquals("The page to delete contains one genuine provider-bound widget", 1,
                 activity.hostedWidgetIds.count { id -> activity.hostedWidgetPages[id] == 1 && android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(id) != null })
         }
-        composeRule.onAllNodesWithTag("delete-home-page-1", useUnmergedTree = true).assertCountEquals(1)
-        composeRule.onNodeWithTag("delete-home-page-1", useUnmergedTree = true).performClick()
+        composeRule.onAllNodesWithTag("page-manager-delete-1", useUnmergedTree = true).assertCountEquals(1)
+        composeRule.onNodeWithTag("page-manager-delete-1", useUnmergedTree = true).performClick()
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()

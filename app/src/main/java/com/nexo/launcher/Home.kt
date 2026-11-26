@@ -721,6 +721,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     if (!cancelled && !longPressed && change.uptimeMillis - startedAt >= viewConfiguration.longPressTimeoutMillis) {
                                         longPressed = true
                                         editingHome = true
+                                        editingWidgetDragId = widgetId
                                     }
                                     if (longPressed) {
                                         if (trashTargetBounds?.contains(rootPosition) == true) launcherActivity?.removeWidget(widgetId)
@@ -2133,6 +2134,7 @@ private fun HomeAppCell(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val longPress = awaitLongPressOrCancellation(down.id)
                     if (longPress != null) {
+                        onLongPress()
                         var rootPosition = layoutCoordinates?.localToRoot(longPress.position) ?: longPress.position
                         if (app != null) onDragPreview(app, rootPosition)
                         try {
