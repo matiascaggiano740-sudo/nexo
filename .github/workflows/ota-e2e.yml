@@ -1,4 +1,5 @@
 name: NEXO updater OTA end-to-end (emulator only)
+# Uses an ephemeral localhost fixture; this workflow never creates a public release.
 
 on:
   push:
