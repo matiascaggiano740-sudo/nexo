@@ -228,13 +228,22 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun widgetPickerShowsVisualPreviewCards() {
+    fun widgetPickerUsesNexoFullScreenLayoutWithSearchAndProviderPreview() {
         composeRule.runOnUiThread { composeRule.activity.launchWidgetPicker(0, 0) }
         composeRule.waitUntil(5_000) { composeRule.activity.availableWidgetProviders.isNotEmpty() }
         val provider = composeRule.activity.availableWidgetProviders.firstOrNull()
         assertTrue("The emulator must expose at least one widget provider to the real picker", provider != null)
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("widget-picker-screen").assertExists()
+        composeRule.onNodeWithText("Widgets").assertExists()
+        composeRule.onNodeWithTag("widget-picker-search").assertExists()
+        composeRule.onNodeWithTag("widget-app-filter-all").assertExists()
         composeRule.onNodeWithTag("widget-provider-${provider!!.provider.packageName}").assertExists()
+        composeRule.onNodeWithTag("widget-picker-search").performTextInput("nexo-widget-search-no-match")
+        composeRule.onNodeWithText("No encontramos ese widget").assertExists()
+        composeRule.onNodeWithTag("widget-picker-close").performClick()
+        composeRule.waitForIdle()
+        assertTrue("Closing the widget picker should clear its list", composeRule.activity.availableWidgetProviders.isEmpty())
     }
 
     @Test

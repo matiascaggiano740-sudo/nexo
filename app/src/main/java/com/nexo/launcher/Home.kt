@@ -1092,20 +1092,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         }
     }
     val availableWidgetProviders = launcherActivity?.availableWidgetProviders.orEmpty()
-    if (availableWidgetProviders.isNotEmpty()) AlertDialog(
-        onDismissRequest = { launcherActivity?.cancelWidgetPicker() },
-        title = { Text("Elegí un widget") },
-        text = {
-            LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(availableWidgetProviders, key = { it.provider.flattenToString() }) { provider ->
-                    WidgetProviderPreviewCard(provider) {
-                        launcherActivity?.selectWidgetProvider(provider)
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = { launcherActivity?.cancelWidgetPicker() }) { Text("Cancelar") } }
+    if (availableWidgetProviders.isNotEmpty()) WidgetPickerScreen(
+        providers = availableWidgetProviders,
+        onDismiss = { launcherActivity?.cancelWidgetPicker() },
+        onSelect = { provider -> launcherActivity?.selectWidgetProvider(provider) }
     )
     if (showIconThemeDialog) AlertDialog(
         onDismissRequest = { showIconThemeDialog = false },
@@ -2501,11 +2491,196 @@ private fun AppWithCategoryMenu(
 
 }
 @Composable
+private fun WidgetPickerScreen(
+    providers: List<AppWidgetProviderInfo>,
+    onDismiss: () -> Unit,
+    onSelect: (AppWidgetProviderInfo) -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    var selectedPackage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val packageLabels = remember(providers) {
+        providers.map { it.provider.packageName }.distinct().sortedBy { packageName ->
+            runCatching {
+                context.packageManager.getApplicationLabel(
+                    context.packageManager.getApplicationInfo(packageName, 0)
+                ).toString()
+            }.getOrDefault(packageName).lowercase(Locale.ROOT)
+        }
+    }
+    val visibleProviders = remember(providers, query, selectedPackage) {
+        providers.filter { provider ->
+            val appLabel = runCatching {
+                context.packageManager.getApplicationLabel(
+                    context.packageManager.getApplicationInfo(provider.provider.packageName, 0)
+                ).toString()
+            }.getOrDefault(provider.provider.packageName)
+            val widgetLabel = runCatching { provider.loadLabel(context.packageManager).toString() }
+                .getOrDefault(provider.provider.className.substringAfterLast('.'))
+            (selectedPackage == null || selectedPackage == provider.provider.packageName) &&
+                (query.isBlank() || appLabel.contains(query, true) || widgetLabel.contains(query, true) ||
+                    provider.provider.packageName.contains(query, true))
+        }.sortedWith(compareBy<AppWidgetProviderInfo> { it.provider.packageName.lowercase(Locale.ROOT) }
+            .thenBy { runCatching { it.loadLabel(context.packageManager).toString() }.getOrDefault("").lowercase(Locale.ROOT) })
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            Modifier.fillMaxSize().testTag("widget-picker-screen"),
+            color = Color(0xFF171411),
+            contentColor = Cream
+        ) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("NEXO  /  INICIO", color = Color(0xFFD6AE70), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Widgets", color = Cream, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Surface(
+                        Modifier.size(44.dp).testTag("widget-picker-close").clickable(onClick = onDismiss),
+                        color = Color(0xFF29231C), shape = RoundedCornerShape(22.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Text("×", color = Cream, fontSize = 25.sp, lineHeight = 26.sp) }
+                    }
+                }
+                Text(
+                    "Elegí algo útil y dale tu lugar en la pantalla.",
+                    color = Cream.copy(alpha = 0.66f), fontSize = 13.sp,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 14.dp)
+                )
+                Surface(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(50.dp)
+                        .testTag("widget-picker-search-surface"),
+                    color = Color(0xFF292622), shape = RoundedCornerShape(25.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                ) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("⌕", color = Color(0xFFD6AE70), fontSize = 23.sp)
+                        Spacer(Modifier.width(10.dp))
+                        BasicTextField(
+                            value = query, onValueChange = { query = it }, singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Cream),
+                            cursorBrush = SolidColor(Color(0xFFD6AE70)),
+                            modifier = Modifier.weight(1f).testTag("widget-picker-search"),
+                            decorationBox = { inner ->
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (query.isEmpty()) Text("Buscar app o widget", color = Cream.copy(alpha = 0.58f), fontSize = 14.sp)
+                                    inner()
+                                }
+                            }
+                        )
+                        if (query.isNotEmpty()) Text("×", color = Cream.copy(alpha = 0.72f), fontSize = 20.sp,
+                            modifier = Modifier.testTag("widget-picker-clear-search").clickable { query = "" })
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedPackage == null,
+                        onClick = { selectedPackage = null },
+                        label = { Text("Todo") },
+                        modifier = Modifier.testTag("widget-app-filter-all"),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF604B2F), selectedLabelColor = Cream,
+                            labelColor = Cream.copy(alpha = 0.76f)
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true, selected = selectedPackage == null,
+                            borderColor = Color.White.copy(alpha = 0.10f), selectedBorderColor = Color(0xFFD6AE70).copy(alpha = 0.6f)
+                        )
+                    )
+                    packageLabels.forEach { packageName ->
+                        val label = runCatching {
+                            context.packageManager.getApplicationLabel(
+                                context.packageManager.getApplicationInfo(packageName, 0)
+                            ).toString()
+                        }.getOrDefault(packageName.substringAfterLast('.'))
+                        FilterChip(
+                            selected = selectedPackage == packageName,
+                            onClick = { selectedPackage = if (selectedPackage == packageName) null else packageName },
+                            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            modifier = Modifier.testTag("widget-app-filter-${packageName.replace('.', '-')}")
+                                .widthIn(max = 148.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFF604B2F), selectedLabelColor = Cream,
+                                labelColor = Cream.copy(alpha = 0.76f)
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true, selected = selectedPackage == packageName,
+                                borderColor = Color.White.copy(alpha = 0.10f), selectedBorderColor = Color(0xFFD6AE70).copy(alpha = 0.6f)
+                            )
+                        )
+                    }
+                }
+                if (visibleProviders.isEmpty()) {
+                    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No encontramos ese widget", color = Cream, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Probá con el nombre de la app.", color = Cream.copy(alpha = 0.62f), fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 5.dp))
+                        }
+                    }
+                } else {
+                    val grouped = visibleProviders.groupBy { it.provider.packageName }
+                    LazyColumn(
+                        Modifier.fillMaxWidth().weight(1f).testTag("widget-picker-list"),
+                        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        grouped.forEach { (packageName, appProviders) ->
+                            item(key = "widget-group-$packageName") {
+                                val appLabel = runCatching {
+                                    context.packageManager.getApplicationLabel(
+                                        context.packageManager.getApplicationInfo(packageName, 0)
+                                    ).toString()
+                                }.getOrDefault(packageName.substringAfterLast('.'))
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = 3.dp, top = 5.dp, bottom = 1.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(appLabel.uppercase(Locale.ROOT), color = Color(0xFFD6AE70),
+                                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f).testTag("widget-app-group-${packageName.replace('.', '-')}")
+                                    )
+                                    Text("${appProviders.size} ${if (appProviders.size == 1) "opción" else "opciones"}",
+                                        color = Cream.copy(alpha = 0.50f), fontSize = 11.sp)
+                                }
+                            }
+                            items(appProviders, key = { "widget-${it.provider.flattenToString()}" }) { provider ->
+                                WidgetProviderPreviewCard(provider) { onSelect(provider) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun WidgetProviderPreviewCard(provider: AppWidgetProviderInfo, onClick: () -> Unit) {
     val context = LocalContext.current
+    val packageName = provider.provider.packageName
     val label = remember(provider) {
         runCatching { provider.loadLabel(context.packageManager).toString() }
             .getOrDefault(provider.provider.className.substringAfterLast('.'))
+    }
+    val appLabel = remember(provider) {
+        runCatching {
+            context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(packageName, 0)).toString()
+        }.getOrDefault(packageName.substringAfterLast('.'))
+    }
+    val appIcon = remember(provider) {
+        runCatching {
+            context.packageManager.getApplicationIcon(packageName).toBitmap(96, 96).asImageBitmap()
+        }.getOrNull()
     }
     val densityDpi = context.resources.displayMetrics.densityDpi
     val preview = remember(provider, densityDpi) {
@@ -2518,34 +2693,65 @@ private fun WidgetProviderPreviewCard(provider: AppWidgetProviderInfo, onClick: 
         }.getOrNull() else null
     }
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(20.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth().testTag("widget-provider-${provider.provider.packageName}")
+        color = Color(0xFF26231F),
+        shape = RoundedCornerShape(24.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6AE70).copy(alpha = 0.22f)),
+        shadowElevation = 5.dp,
+        modifier = Modifier.fillMaxWidth().testTag("widget-provider-$packageName")
             .clickable(onClick = onClick)
     ) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.fillMaxWidth().padding(11.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = 3.dp, end = 3.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    Modifier.size(38.dp), color = Color(0xFFD6AE70).copy(alpha = 0.13f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (appIcon != null) Image(appIcon, appLabel, Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
+                    else Box(contentAlignment = Alignment.Center) { Text("▦", color = Color(0xFFD6AE70), fontSize = 20.sp) }
+                }
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text(label, color = Cream, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(appLabel, color = Cream.copy(alpha = 0.62f), fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text("${provider.minWidth} × ${provider.minHeight}", color = Cream.copy(alpha = 0.62f),
+                    fontSize = 11.sp, modifier = Modifier.padding(start = 6.dp))
+            }
             Surface(
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.width(116.dp).height(104.dp)
+                color = Color(0xFFF3EEE4),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 116.dp, max = 190.dp)
+                    .testTag("widget-preview-${provider.provider.flattenToString().hashCode()}")
             ) {
                 if (preview != null) {
-                    Image(preview, contentDescription = "Vista previa de $label", modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                    Image(preview, contentDescription = "Vista previa de $label",
+                        modifier = Modifier.fillMaxWidth().padding(6.dp), contentScale = ContentScale.Fit)
                 } else {
-                    Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("▦", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                        Text("Vista previa no disponible", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (appIcon != null) Image(appIcon, appLabel, Modifier.size(44.dp), contentScale = ContentScale.Fit)
+                        else Text("▦", color = Color(0xFF80643F), fontSize = 28.sp)
+                        Text(label, color = Color(0xFF332C22), fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 4.dp))
+                        Text("La app no ofrece imagen previa", color = Color(0xFF71695E), fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 2.dp))
                     }
                 }
             }
-            Column(Modifier.weight(1f).padding(start = 14.dp)) {
-                Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(provider.provider.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${provider.minWidth} × ${provider.minHeight} dp", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(5.dp))
-                Text("Tocá para agregar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp, start = 3.dp, end = 3.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Vista previa", color = Cream.copy(alpha = 0.60f), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                Surface(
+                    color = Color(0xFFD6AE70), shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.testTag("widget-add-${provider.provider.flattenToString().hashCode()}")
+                        .clickable(onClick = onClick)
+                ) {
+                    Text("Agregar  +", color = Color(0xFF201A12), fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                }
             }
         }
     }
