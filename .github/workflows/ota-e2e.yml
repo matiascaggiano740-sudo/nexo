@@ -62,11 +62,12 @@ jobs:
           set -euo pipefail
           retry_gradle() {
             local attempt=1 status=0
-            while (( attempt <= 5 )); do
+            while (( attempt <= 7 )); do
               if gradle "$@" --no-daemon; then return 0; else status=$?; fi
-              if (( attempt == 5 )); then break; fi
-              sleep_seconds=$((20 * (2 ** (attempt - 1))))
-              echo "Gradle download/build attempt $attempt failed (exit $status); retrying after ${sleep_seconds}s for transient repository rate limits."
+              if (( attempt == 7 )); then break; fi
+              sleep_seconds=$((30 * (2 ** (attempt - 1))))
+              (( sleep_seconds > 300 )) && sleep_seconds=300
+              echo "Gradle attempt $attempt/7 failed (exit $status); retrying after ${sleep_seconds}s for transient repository rate limits."
               sleep "$sleep_seconds"
               attempt=$((attempt + 1))
             done
@@ -93,11 +94,12 @@ jobs:
           set -euo pipefail
           retry_gradle() {
             local attempt=1 status=0
-            while (( attempt <= 5 )); do
+            while (( attempt <= 7 )); do
               if gradle "$@" --no-daemon; then return 0; else status=$?; fi
-              if (( attempt == 5 )); then break; fi
-              sleep_seconds=$((20 * (2 ** (attempt - 1))))
-              echo "Gradle download/build attempt $attempt failed (exit $status); retrying after ${sleep_seconds}s for transient repository rate limits."
+              if (( attempt == 7 )); then break; fi
+              sleep_seconds=$((30 * (2 ** (attempt - 1))))
+              (( sleep_seconds > 300 )) && sleep_seconds=300
+              echo "Gradle attempt $attempt/7 failed (exit $status); retrying after ${sleep_seconds}s for transient repository rate limits."
               sleep "$sleep_seconds"
               attempt=$((attempt + 1))
             done
