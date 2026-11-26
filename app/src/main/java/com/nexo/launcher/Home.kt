@@ -2160,7 +2160,7 @@ private fun HomeAppCell(
                         val distanceSquared = delta.x * delta.x + delta.y * delta.y
                         val touchSlopSquared = viewConfiguration.touchSlop * viewConfiguration.touchSlop
                         val tapTimeout = minOf(viewConfiguration.longPressTimeoutMillis, 300L)
-                        if (!end.pressed && elapsed < tapTimeout && distanceSquared <= touchSlopSquared) {
+                        if (!end.pressed && !end.isConsumed && elapsed < tapTimeout && distanceSquared <= touchSlopSquared) {
                             if (app != null) onAppClick() else onFolderClick()
                         }
                     }

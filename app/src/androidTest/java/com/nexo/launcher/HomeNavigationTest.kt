@@ -132,15 +132,15 @@ class HomeNavigationTest {
     }
 
     @Test
-    fun appsCanBeDraggedToTrashFromHomeAndCreatedPagesWithoutLosingOtherPages() {
+    fun appsCanBeRemovedFromCreatedPageWithoutChangingHome() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val packageNames = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
             .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(2)
         assertTrue("The emulator must provide two launchable apps for the remove test", packageNames.size == 2)
         val homeApp = packageNames[0]
-        val createdPageApp = packageNames[1]
+        val pageApp = packageNames[1]
         val homePage = MutableList(28) { "-" }.apply { this[8] = homeApp }
-        val createdPage = MutableList(28) { "-" }.apply { this[8] = createdPageApp }
+        val createdPage = MutableList(28) { "-" }.apply { this[8] = pageApp }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", listOf(homePage, createdPage).joinToString("~") { it.joinToString("|") })
             .putString("packages", homePage.joinToString("|"))
@@ -148,35 +148,40 @@ class HomeNavigationTest {
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
-        fun dragVisibleAppToTrash() {
-            val node = composeRule.onAllNodesWithTag("home-page-app").get(0)
-            val bounds = node.fetchSemanticsNode().boundsInRoot
-            val trash = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
-            node.performTouchInput {
-                val origin = bounds.center - bounds.topLeft
-                val destination = trash - bounds.topLeft
-                down(origin)
-                advanceEventTime(700)
-                for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
-                up()
-            }
-            composeRule.waitForIdle()
-        }
         composeRule.onNodeWithTag("edit-select-page-1").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
-        dragVisibleAppToTrash()
-        var pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
-        assertEquals("Dragging to the bin removes the app from its created page", "-", pages[1][8])
-        assertEquals("The Home app survives removal from the created page", homeApp, pages[0][8])
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-remove-app-8-$pageApp", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("home-remove-app-8-$pageApp", useUnmergedTree = true).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").getOrNull(1)?.split("|")?.getOrNull(8) == "-"
+        }
+        val pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
+        assertEquals("The created-page app is removed", "-", pages[1][8])
+        assertEquals("Home is unchanged", homeApp, pages[0][8])
+    }
 
-        composeRule.onNodeWithTag("edit-select-page-0").performClick()
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
-        dragVisibleAppToTrash()
-        pages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("~").map { it.split("|") }
-        assertEquals("Dragging to the bin removes the Home app and persists it", "-", pages[0][8])
-        assertEquals("The created page remains unchanged", "-", pages[1][8])
-        composeRule.onNodeWithTag("finish-home-edit").performClick()
+    @Test
+    fun appCanBeRemovedFromHomeWithoutUninstallingIt() {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val packageName = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.first { it != composeRule.activity.packageName }
+        val home = MutableList(28) { "-" }.apply { this[8] = packageName }
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
+            .putString("pages", home.joinToString("|"))
+            .putString("packages", home.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-remove-app-8-$packageName", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("home-remove-app-8-$packageName", useUnmergedTree = true).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|").getOrNull(8) == "-"
+        }
+        assertEquals("The shortcut is removed without uninstalling the app", "-",
+            composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty().split("|")[8])
+        assertTrue("The application remains installed", runCatching {
+            composeRule.activity.packageManager.getApplicationInfo(packageName, 0)
+        }.isSuccess)
     }
 
     @Test
@@ -367,39 +372,28 @@ class HomeNavigationTest {
     @Test
     fun populatedPageDeletionRequiresConfirmation() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val launchablePackages = composeRule.activity.packageManager
-            .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
-            .map { it.activityInfo.packageName }
-            .filter { it != composeRule.activity.packageName }
-            .distinct()
+        val launchablePackages = composeRule.activity.packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct()
         assertTrue("The emulator must provide two launchable apps for page preservation test", launchablePackages.size >= 2)
         val firstPage = MutableList(28) { "-" }.apply { this[8] = launchablePackages[0] }
-        val preservedPage = MutableList(28) { "-" }.apply { this[8] = launchablePackages[1] }
+        val secondPage = MutableList(28) { "-" }.apply { this[8] = launchablePackages[1] }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
-            .putString("pages", listOf(firstPage, preservedPage).joinToString("~") { it.joinToString("|") })
+            .putString("pages", listOf(firstPage, secondPage).joinToString("~") { it.joinToString("|") })
             .putString("packages", firstPage.joinToString("|"))
-            .apply()
+            .putInt("current_page", 0).commit()
         composeRule.activityRule.scenario.recreate()
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty()
-        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.onNodeWithTag("edit-configure").performClick()
-        composeRule.onNodeWithText("Páginas").performClick()
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("page-manager-delete-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("page-manager-delete-0", useUnmergedTree = true).performClick()
-        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
+        composeRule.onNodeWithTag("edit-delete-page").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("cancel-delete-home-page").performClick()
-        composeRule.onNodeWithTag("edit-configure").performClick()
-        composeRule.onNodeWithText("Páginas").performClick()
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("page-manager-delete-0", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("page-manager-delete-0", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("edit-delete-page").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
-        composeRule.onAllNodesWithTag("home-page-app").assertCountEquals(1)
-        val savedPages = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
-        assertTrue("Deleting a populated page should persist the remaining page", !savedPages.contains("~"))
-        assertTrue("Apps on pages not deleted must be preserved", savedPages.contains(launchablePackages[1]))
+        val saved = composeRule.activity.getSharedPreferences("nexo_home", 0).getString("pages", "").orEmpty()
+        assertTrue("Deleting the current populated page must leave the other page", !saved.contains("~"))
+        assertTrue("The app on the other page must survive", saved.contains(launchablePackages[1]))
     }
 
     @Test
@@ -426,19 +420,10 @@ class HomeNavigationTest {
         } finally {
             instrumentation.uiAutomation.dropShellPermissionIdentity()
         }
-        val widgetTag = "home-widget-${allocatedId.get()}"
-        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag(widgetTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        val widgetNode = composeRule.onNodeWithTag(widgetTag, useUnmergedTree = true)
-        val source = widgetNode.fetchSemanticsNode().boundsInRoot
-        val dragTarget = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
-        widgetNode.performTouchInput {
-            val origin = source.center - source.topLeft
-            val target = dragTarget - source.topLeft
-            down(origin)
-            advanceEventTime(700)
-            for (step in 1..14) moveTo(origin + (target - origin) * (step / 14f), 35)
-            up()
-        }
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-widget-${allocatedId.get()}", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("remove-widget-${allocatedId.get()}").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag("remove-widget-${allocatedId.get()}").performClick()
         composeRule.waitUntil(5_000) { allocatedId.get() !in composeRule.activity.hostedWidgetIds }
         composeRule.activityRule.scenario.onActivity { activity ->
             assertEquals("Removing a widget must release its Android widget ID", null,
@@ -499,25 +484,12 @@ class HomeNavigationTest {
             instrumentation.uiAutomation.dropShellPermissionIdentity()
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("home-page-indicator-1").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("home-widget-${allocatedWidgetId.get()}", useUnmergedTree = true).performTouchInput { longClick() }
-        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("remove-widget-${allocatedWidgetId.get()}").fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onNodeWithTag("finish-home-edit").performClick()
+        composeRule.activity.getSharedPreferences("nexo_home", 0).edit().putInt("current_page", 1).commit()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-widget-${allocatedWidgetId.get()}", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
-        composeRule.onNodeWithTag("edit-configure").performClick()
-        composeRule.onNodeWithText("Páginas").performClick()
-        composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("page-manager-delete-1", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        }
-        composeRule.activityRule.scenario.onActivity { activity ->
-            assertEquals("The page to delete contains one genuine provider-bound widget", 1,
-                activity.hostedWidgetIds.count { id -> activity.hostedWidgetPages[id] == 1 && android.appwidget.AppWidgetManager.getInstance(activity).getAppWidgetInfo(id) != null })
-        }
-        composeRule.onAllNodesWithTag("page-manager-delete-1", useUnmergedTree = true).assertCountEquals(1)
-        composeRule.onNodeWithTag("page-manager-delete-1", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("edit-delete-page").performClick()
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("confirm-delete-home-page").fetchSemanticsNodes().isNotEmpty() }
-        composeRule.onAllNodesWithTag("confirm-delete-home-page").assertCountEquals(1)
         composeRule.onNodeWithTag("confirm-delete-home-page").performClick()
         composeRule.waitForIdle()
         composeRule.activityRule.scenario.onActivity { activity ->

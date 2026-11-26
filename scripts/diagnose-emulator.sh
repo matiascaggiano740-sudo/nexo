@@ -159,7 +159,8 @@ methods=(
   doubleTapEmptyHomeCellDoesNotTriggerLockFeature
   activityAlwaysRequestsTheLiveAndroidWallpaper
   savedHomeQuoteCanBeRemovedWithoutReturningAsDefault
-  appsCanBeDraggedToTrashFromHomeAndCreatedPagesWithoutLosingOtherPages
+  appsCanBeRemovedFromCreatedPageWithoutChangingHome
+  appCanBeRemovedFromHomeWithoutUninstallingIt
   widgetPickerShowsVisualPreviewCards
   longPressingHomeAppEntersPocoEditModeWithoutLaunchingIt
   swipeUpOnHomeOpensTheAppDrawer
