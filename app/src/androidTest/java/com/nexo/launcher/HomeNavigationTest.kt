@@ -103,15 +103,18 @@ class HomeNavigationTest {
     @Test
     fun appsCanBeRemovedFromHomeAndCreatedPagesWithoutLosingOtherPages() {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val appPackage = composeRule.activity.packageManager
+        val packageNames = composeRule.activity.packageManager
             .queryIntentActivities(launchIntent, PackageManager.MATCH_DEFAULT_ONLY)
-            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
-            ?.activityInfo?.packageName
-        assertTrue("The emulator must provide a launchable app for the remove test", appPackage != null)
-        val packageName = appPackage ?: error("No launchable test app available")
+            .map { it.activityInfo.packageName }
+            .filter { it != composeRule.activity.packageName }
+            .distinct()
+            .take(2)
+        assertTrue("The emulator must provide two launchable apps for the remove test", packageNames.size == 2)
+        val homeApp = packageNames[0]
+        val createdPageApp = packageNames[1]
 
-        val homePage = MutableList(28) { "-" }.apply { this[8] = packageName }
-        val createdPage = MutableList(28) { "-" }.apply { this[8] = packageName }
+        val homePage = MutableList(28) { "-" }.apply { this[8] = homeApp }
+        val createdPage = MutableList(28) { "-" }.apply { this[8] = createdPageApp }
         composeRule.activity.getSharedPreferences("nexo_home", 0).edit()
             .putString("pages", listOf(homePage, createdPage).joinToString("~") { it.joinToString("|") })
             .putString("packages", homePage.joinToString("|"))
@@ -121,17 +124,17 @@ class HomeNavigationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitUntil(10_000) {
-            composeRule.onAllNodesWithTag("remove-home-app-page-1-$packageName", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("remove-home-app-page-1-$createdPageApp", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeRule.onNodeWithTag("remove-home-app-page-1-$packageName", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("remove-home-app-page-1-$createdPageApp", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         var pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
             .getString("pages", "").orEmpty().split("~").map { it.split("|") }
         assertEquals("Removing an app from a created page must clear only that slot", "-", pages[1][8])
-        assertEquals("Removing from another page must preserve the Home app", packageName, pages[0][8])
+        assertEquals("Removing from another page must preserve the Home app", homeApp, pages[0][8])
 
-        composeRule.onNodeWithTag("remove-home-app-page-0-$packageName", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("remove-home-app-page-0-$homeApp", useUnmergedTree = true).performClick()
         composeRule.waitForIdle()
         pages = composeRule.activity.getSharedPreferences("nexo_home", 0)
             .getString("pages", "").orEmpty().split("~").map { it.split("|") }
