@@ -160,7 +160,7 @@ private fun commitHomeStructure(
     return editor.commit()
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun Home() {
     val ctx = LocalContext.current
@@ -2826,6 +2826,7 @@ private fun WidgetProviderPreviewCard(provider: AppWidgetProviderInfo, onClick: 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     var q by remember { mutableStateOf("") }
@@ -2873,27 +2874,31 @@ var manualCategories by remember {
         Modifier.fillMaxSize().background(Color(0xFF171411))
             .statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 20.dp)
             .testTag("app-drawer-surface")
-            .pointerInput(drawerListState) {
-                var verticalDistance = 0f
-                var startedAtTop = false
-                var startedAtBottom = false
-                detectVerticalDragGestures(
-                    onDragStart = {
-                        verticalDistance = 0f
-                        startedAtTop = drawerListState.firstVisibleItemIndex == 0 && drawerListState.firstVisibleItemScrollOffset == 0
-                        val layout = drawerListState.layoutInfo
-                        startedAtBottom = layout.totalItemsCount > 0 && layout.visibleItemsInfo.lastOrNull()?.index == layout.totalItemsCount - 1
-                    },
-                    onVerticalDrag = { change, amount ->
-                        verticalDistance += amount
-                        change.consume()
-                    },
-                    onDragEnd = {
-                        if (verticalDistance > viewConfiguration.touchSlop * 2f && startedAtTop) close()
-                        else if (verticalDistance < -viewConfiguration.touchSlop * 2f && startedAtBottom) close()
-                    },
-                    onDragCancel = { verticalDistance = 0f }
-                )
+            .pointerInput(drawerListState, WindowInsets.isImeVisible) {
+                if (!WindowInsets.isImeVisible) {
+                    var verticalDistance = 0f
+                    var startedAtTop = false
+                    var startedAtBottom = false
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            verticalDistance = 0f
+                            startedAtTop = drawerListState.firstVisibleItemIndex == 0 && drawerListState.firstVisibleItemScrollOffset == 0
+                            val layout = drawerListState.layoutInfo
+                            startedAtBottom = layout.totalItemsCount > 0 && layout.visibleItemsInfo.lastOrNull()?.index == layout.totalItemsCount - 1
+                        },
+                        onVerticalDrag = { change, amount ->
+                            verticalDistance += amount
+                            val isClosingSwipe = (startedAtTop && verticalDistance > 0f) ||
+                                (startedAtBottom && verticalDistance < 0f)
+                            if (isClosingSwipe) change.consume()
+                        },
+                        onDragEnd = {
+                            if (verticalDistance > viewConfiguration.touchSlop * 2f && startedAtTop) close()
+                            else if (verticalDistance < -viewConfiguration.touchSlop * 2f && startedAtBottom) close()
+                        },
+                        onDragCancel = { verticalDistance = 0f }
+                    )
+                }
             }
     ) {
 
