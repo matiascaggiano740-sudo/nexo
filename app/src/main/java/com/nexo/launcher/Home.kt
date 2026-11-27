@@ -43,7 +43,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
@@ -135,12 +137,32 @@ private fun readUserFolders(ctx: android.content.Context): List<Pair<String, Lis
     }
 }.getOrDefault(emptyList())
 
-private fun writeUserFolders(ctx: android.content.Context, folders: List<Pair<String, List<String>>>) {
+private fun serializeUserFolders(folders: List<Pair<String, List<String>>>): String {
     val array = JSONArray()
     folders.forEach { (name, packages) ->
         array.put(JSONObject().put("name", name).put("packages", JSONArray(packages)))
     }
-    ctx.getSharedPreferences("nexo_home", 0).edit().putString("user_folders", array.toString()).apply()
+    return array.toString()
+}
+
+private fun writeUserFolders(ctx: android.content.Context, folders: List<Pair<String, List<String>>>) {
+    ctx.getSharedPreferences("nexo_home", 0).edit()
+        .putString("user_folders", serializeUserFolders(folders)).commit()
+}
+
+/** Persist the folder registry and its page tokens atomically so a crash cannot split the layout. */
+private fun commitHomeStructure(
+    ctx: android.content.Context,
+    pages: List<List<String>>,
+    folders: List<Pair<String, List<String>>>,
+    dockPackages: List<String>? = null
+): Boolean {
+    val editor = ctx.getSharedPreferences("nexo_home", 0).edit()
+        .putString("user_folders", serializeUserFolders(folders))
+        .putString("pages", pages.joinToString("~") { it.joinToString("|") })
+        .putString("packages", pages.firstOrNull().orEmpty().joinToString("|"))
+    dockPackages?.let { editor.putString("dock_packages", it.joinToString("|")) }
+    return editor.commit()
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -227,6 +249,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var dragPreview by remember { mutableStateOf<Pair<AppItem, ComposeOffset>?>(null) }
+    var folderDragPreview by remember { mutableStateOf<Triple<String, List<AppItem>, ComposeOffset>?>(null) }
     var editingWidgetDragId by remember { mutableIntStateOf(-1) }
     var trashTargetBounds by remember { mutableStateOf<ComposeRect?>(null) }
     var city by remember { mutableStateOf(savedCity(ctx)) }
@@ -521,7 +544,8 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
     }
     LaunchedEffect(photoTick) { photo = withContext(Dispatchers.IO) { loadCardPhoto(ctx) } }
 
-    BackHandler(drawer) { drawer = false }
+    // The IME owns Back while visible; only intercept it to close the drawer after the keyboard hides.
+    BackHandler(drawer && !WindowInsets.isImeVisible) { drawer = false }
     BackHandler(openFolder != null) { openFolder = null }
     BackHandler(editingHome && !drawer && openFolder == null) { editingHome = false }
 
@@ -831,7 +855,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onDockDrop = { payload, targetIndex -> dropAppOnDock(targetIndex, payload) },
                         onPageDrop = { payload, targetIndex -> dropAppOnHomePage(targetIndex, payload) },
                         onDragPreview = { item, position -> dragPreview = if (item != null && position != null) item to position else null },
-                        isDragged = dragPreview?.first?.pkg == app?.pkg,
+                        onFolderDragPreview = { name, folderItems, position ->
+                            folderDragPreview = if (position == null) null else Triple(name, folderItems, position)
+                        },
+                        isDragged = dragPreview?.first?.pkg == app?.pkg || folderDragPreview?.first == folderName,
                         onDrop = { payload, targetIndex ->
                             val fromDock = payload.startsWith("dock:")
                             val draggedPkg = payload.removePrefix("home:").removePrefix("dock:")
@@ -849,6 +876,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                 while (dest.size <= logicalTargetIndex) dest.add("-")
 
                                 val sourcePage = pages.indexOfFirst { it.contains(draggedPkg) }
+                                var updatedFolders = userFolders
                                 var canApplyDrop = true
                                 val target = dest[logicalTargetIndex]
                                 if (target == draggedPkg) {
@@ -858,7 +886,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                     val targetFolder = userFolders.find { it.first == folderName }
                                     if (targetFolder != null) {
                                         val addPackages = draggedFolder?.second ?: listOf(draggedPkg)
-                                        val updatedFolders = userFolders.mapNotNull { folder ->
+                                        updatedFolders = userFolders.mapNotNull { folder ->
                                             when (folder.first) {
                                                 folderName -> folder.first to (folder.second + addPackages).distinct()
                                                 draggedFolderName -> null
@@ -867,25 +895,26 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                         }
                                         val removedNames = userFolders.map { it.first }.toSet() - updatedFolders.map { it.first }.toSet()
                                         pages.forEach { page -> page.indices.forEach { index -> if (page[index].startsWith("folder:") && page[index].removePrefix("folder:") in removedNames) page[index] = "-" } }
-                                        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
                                         if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
                                     }
                                 } else if (target != null && target != "-") {
                                     val existingApp = apps.firstOrNull { it.pkg == target }
                                     val draggedApp = apps.firstOrNull { it.pkg == draggedPkg }
                                     if (draggedFolder != null && existingApp != null) {
-                                        val updatedFolders = userFolders.map { folder ->
-                                            if (folder.first == draggedFolder.first) folder.first to (folder.second + existingApp.pkg).distinct() else folder
+                                        // A folder is a grid item, not an app being added into another folder:
+                                        // dropping it on an app swaps their positions.
+                                        val sourceIndex = if (sourcePage >= 0) pages[sourcePage].indexOf(draggedPkg) else -1
+                                        if (sourceIndex >= 0) {
+                                            pages[sourcePage][sourceIndex] = existingApp.pkg
+                                            dest[logicalTargetIndex] = draggedPkg
+                                        } else {
+                                            canApplyDrop = false
                                         }
-                                        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
-                                        dest[logicalTargetIndex] = draggedPkg
                                     } else if (existingApp != null && draggedApp != null) {
                                         var folderName = "Carpeta"
                                         var suffix = 1
-                                        while (userFolders.any { it.first == folderName }) { folderName = "Carpeta $suffix"; suffix++ }
-                                        val updatedFolders = userFolders + (folderName to listOf(existingApp.pkg, draggedApp.pkg).distinct())
-                                        userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
+                                        while (updatedFolders.any { it.first == folderName }) { folderName = "Carpeta $suffix"; suffix++ }
+                                        updatedFolders = updatedFolders + (folderName to listOf(existingApp.pkg, draggedApp.pkg).distinct())
                                         dest[logicalTargetIndex] = "folder:$folderName"
                                         if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
                                     }
@@ -908,18 +937,19 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
 
                                 if (canApplyDrop) {
                                     val updatedPages: List<List<String>> = pages.map { it.toList() }
-                                    ctx.getSharedPreferences("nexo_home", 0).edit()
-                                        .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
-                                        .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") })
-                                        .apply()
-                                    homePages = updatedPages
-                                    homePackages = dest.toList()
-                                    if (fromDock) {
-                                        dockPackages = dockPackages.map { if (it == draggedPkg) "-" else it }
-                                        dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-                                        ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|")).apply()
+                                    val updatedDock = if (fromDock) dockPackages.map { if (it == draggedPkg) "-" else it } else null
+                                    if (commitHomeStructure(ctx, updatedPages, updatedFolders, updatedDock)) {
+                                        userFolders = updatedFolders
+                                        homePages = updatedPages
+                                        homePackages = updatedPages.getOrNull(currentPage).orEmpty()
+                                        if (updatedDock != null) {
+                                            dockPackages = updatedDock
+                                            dock = updatedDock.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                                        }
+                                        drawer = false
+                                    } else {
+                                        Toast.makeText(ctx, "No se pudo guardar el movimiento", Toast.LENGTH_SHORT).show()
                                     }
-                                    drawer = false
                                 }
                             }
                         }
@@ -1059,7 +1089,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 onSettings = { showSettingsDialog = true },
                 onQuote = { editCard = true },
                 onEffect = { wallpaperDim = it },
-                showTrashTarget = editingHome || editingWidgetDragId >= 0 || dragPreview != null,
+                showTrashTarget = editingHome || editingWidgetDragId >= 0 || dragPreview != null || folderDragPreview != null,
                 onTrashBoundsChanged = { trashTargetBounds = it }
             )
         }
@@ -1088,6 +1118,20 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     .zIndex(30f)
                     .testTag("dragging-app-preview"),
                 contentScale = ContentScale.Crop
+            )
+        }
+        folderDragPreview?.let { (name, folderItems, position) ->
+            val density = LocalDensity.current.density
+            FolderIcon(
+                name = name,
+                apps = folderItems,
+                size = 60.dp,
+                onClick = {},
+                testTag = "dragging-folder-preview",
+                modifier = Modifier
+                    .offset { IntOffset((position.x - 30.dp.value * density).toInt(), (position.y - 30.dp.value * density).toInt()) }
+                    .zIndex(30f)
+                    .graphicsLayer { alpha = 0.92f; shadowElevation = 14.dp.toPx() }
             )
         }
     }
@@ -1255,13 +1299,18 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
             pages.forEach { page -> page.indices.forEach { index ->
                 if (page[index].startsWith("folder:") && page[index].removePrefix("folder:") in deletedNames) page[index] = "-"
             } }
-            userFolders = updatedFolders; writeUserFolders(ctx, updatedFolders)
-            dockPackages = dockPackages.map { if (it in packages) "-" else it }
-            dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-            homePages = pages.map { it.toList() }; homePackages = homePages.getOrNull(currentPage).orEmpty()
-            ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|"))
-                .putString("pages", homePages.joinToString("~") { it.joinToString("|") }).putString("packages", homePages.firstOrNull().orEmpty().joinToString("|")).apply()
-            showNewFolder = false
+            val updatedPages = pages.map { it.toList() }
+            val updatedDock = dockPackages.map { if (it in packages) "-" else it }
+            if (commitHomeStructure(ctx, updatedPages, updatedFolders, updatedDock)) {
+                userFolders = updatedFolders
+                dockPackages = updatedDock
+                dock = updatedDock.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+                homePages = updatedPages
+                homePackages = updatedPages.getOrNull(currentPage).orEmpty()
+                showNewFolder = false
+            } else {
+                Toast.makeText(ctx, "No se pudo guardar la carpeta", Toast.LENGTH_LONG).show()
+            }
         }
     })
     folderEditor?.let { existing -> UserFolderDialog(apps, existing, onDismiss = { folderEditor = null }, onSave = { name, packages ->
@@ -1277,20 +1326,28 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 else -> token
             }
         } }
-        userFolders = updated; writeUserFolders(ctx, updated)
-        dockPackages = dockPackages.map { if (it in packages) "-" else it }
-        dock = dockPackages.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
-        homePages = renamedPages; homePackages = renamedPages.getOrNull(currentPage).orEmpty()
-        ctx.getSharedPreferences("nexo_home", 0).edit().putString("dock_packages", dockPackages.joinToString("|"))
-            .putString("pages", renamedPages.joinToString("~") { it.joinToString("|") }).putString("packages", renamedPages.firstOrNull().orEmpty().joinToString("|")).apply()
-        folderEditor = null
+        val updatedDock = dockPackages.map { if (it in packages) "-" else it }
+        if (commitHomeStructure(ctx, renamedPages, updated, updatedDock)) {
+            userFolders = updated
+            dockPackages = updatedDock
+            dock = updatedDock.mapNotNull { pkg -> apps.find { it.pkg == pkg } }
+            homePages = renamedPages
+            homePackages = renamedPages.getOrNull(currentPage).orEmpty()
+            folderEditor = null
+        } else {
+            Toast.makeText(ctx, "No se pudieron guardar los cambios de la carpeta", Toast.LENGTH_LONG).show()
+        }
     }, onDelete = {
         val updated = userFolders.filterNot { it.first == existing.first }
-        userFolders = updated; writeUserFolders(ctx, updated)
         val changedPages = homePages.map { page -> page.map { if (it == "folder:${existing.first}") "-" else it } }
-        homePages = changedPages; homePackages = changedPages.getOrNull(currentPage).orEmpty()
-        ctx.getSharedPreferences("nexo_home", 0).edit().putString("pages", changedPages.joinToString("~") { it.joinToString("|") }).putString("packages", changedPages.firstOrNull().orEmpty().joinToString("|")).apply()
-        folderEditor = null
+        if (commitHomeStructure(ctx, changedPages, updated)) {
+            userFolders = updated
+            homePages = changedPages
+            homePackages = changedPages.getOrNull(currentPage).orEmpty()
+            folderEditor = null
+        } else {
+            Toast.makeText(ctx, "No se pudo eliminar la carpeta", Toast.LENGTH_LONG).show()
+        }
     }) }
     pagePendingDelete?.let { index ->
         val appCount = homePages.getOrNull(index)?.let { page ->
@@ -1341,11 +1398,13 @@ private fun UserFolderDialog(
     val selected = remember(existing) { mutableStateListOf<String>().apply { addAll(existing?.second.orEmpty()) } }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Nueva carpeta" else "Editar carpeta") },
         text = { Column {
-            OutlinedTextField(name, { value -> name = value.filter { it != '|' && it != '~' }.take(24) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { value -> name = value.filter { it != '|' && it != '~' }.take(24) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("folder-name-field"))
             Spacer(Modifier.height(8.dp))
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                 apps.sortedBy { it.label.lowercase() }.forEach { app ->
-                    Row(Modifier.fillMaxWidth().clickable { if (app.pkg in selected) selected.remove(app.pkg) else selected.add(app.pkg) }, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().testTag("folder-app-select-${app.pkg}")
+                        .clickable { if (app.pkg in selected) selected.remove(app.pkg) else selected.add(app.pkg) },
+                        verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(app.pkg in selected, onCheckedChange = null)
                         Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -1552,17 +1611,19 @@ fun FolderIcon(
     name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
     dragPayload: String? = null,
     labelFontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
-    labelTopGap: Dp = 6.dp
+    labelTopGap: Dp = 6.dp,
+    testTag: String? = null,
+    modifier: Modifier = Modifier
 ) {
     val dragView = LocalView.current
     val density = LocalDensity.current.density
     val previewIconSize = ((size - 10.dp) / 3).coerceAtLeast(12.dp)
-    Column(Modifier.width(size + 12.dp).combinedClickable(onClick = onClick, onLongClick = {
+    Column(modifier.width(size + 12.dp).combinedClickable(onClick = onClick, onLongClick = {
         if (dragPayload != null && apps.isNotEmpty()) {
             val clip = ClipData.newPlainText("nexo-folder", dragPayload)
             dragView.startDragAndDrop(clip, AppIconDragShadowBuilder(dragView, apps.first().icon.asAndroidBitmap(), (size.value * density).toInt().coerceAtLeast(48)), dragPayload, View.DRAG_FLAG_GLOBAL)
         }
-    }).testTag("home-folder-$name"), horizontalAlignment = Alignment.CenterHorizontally) {
+    }).testTag(testTag ?: "home-folder-$name"), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size)) {
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(5.dp)) {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
@@ -2214,6 +2275,7 @@ private fun HomeAppCell(
     onPageDrop: (String, Int) -> Unit,
     onRemove: (String) -> Unit,
     onDragPreview: (AppItem?, ComposeOffset?) -> Unit = { _, _ -> },
+    onFolderDragPreview: (String, List<AppItem>, ComposeOffset?) -> Unit = { _, _, _ -> },
     isDragged: Boolean = false,
     trashBounds: ComposeRect? = null,
     onTrashDrop: (String) -> Unit = {},
@@ -2247,17 +2309,24 @@ private fun HomeAppCell(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val longPress = awaitLongPressOrCancellation(down.id)
                     if (longPress != null) {
-                        onLongPress()
+                        var enteredDragMode = false
                         var rootPosition = layoutCoordinates?.localToRoot(longPress.position) ?: longPress.position
                         if (app != null) onDragPreview(app, rootPosition)
+                        else if (folderName != null) onFolderDragPreview(folderName, folderApps, rootPosition)
                         try {
                             drag(down.id) { change ->
+                                if (!enteredDragMode) {
+                                    enteredDragMode = true
+                                    onLongPress()
+                                }
                                 change.consume()
                                 rootPosition = layoutCoordinates?.localToRoot(change.position) ?: change.position
                                 if (app != null) onDragPreview(app, rootPosition)
+                                else if (folderName != null) onFolderDragPreview(folderName, folderApps, rootPosition)
                             }
                         } finally {
                             if (app != null) onDragPreview(null, null)
+                            else if (folderName != null) onFolderDragPreview(folderName, emptyList(), null)
                         }
                         val homeDestination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         val dockDestination = dockCellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
@@ -2312,7 +2381,8 @@ private fun HomeAppCell(
             FolderIcon(
                 folderName, folderApps, iconSizing.iconSizeDp.dp, onFolderClick,
                 labelFontSize = iconSizing.labelFontSizeSp.sp,
-                labelTopGap = iconSizing.labelTopGapDp.dp
+                labelTopGap = iconSizing.labelTopGapDp.dp,
+                modifier = Modifier.graphicsLayer { alpha = if (isDragged) 0.28f else 1f }
             )
             if (editingHome) {
                 Surface(color = Color(0xFFE5E8EF), shape = RoundedCornerShape(50),
@@ -2764,6 +2834,7 @@ fun Drawer(apps: List<AppItem>, close: () -> Unit) {
     val drawerListState = rememberLazyListState()
     var showOrganizer by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 var playCategories by remember {
     mutableStateOf(
         ctx.getSharedPreferences("nexo_play_categories", 0)
@@ -2798,7 +2869,8 @@ var manualCategories by remember {
         }
     }
     Column(
-        Modifier.fillMaxSize().background(Color(0xFF171411)).statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)
+        Modifier.fillMaxSize().background(Color(0xFF171411))
+            .statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 20.dp)
             .testTag("app-drawer-surface")
             .pointerInput(drawerListState) {
                 var verticalDistance = 0f
@@ -2876,6 +2948,8 @@ var manualCategories by remember {
                         value = q,
                         onValueChange = { q = it },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(color = Cream),
                         cursorBrush = SolidColor(Color(0xFFD6AE70)),
                         modifier = Modifier.weight(1f).testTag("drawer-search-field"),

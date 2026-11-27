@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollToNode
@@ -85,6 +87,62 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun drawerSearchStaysUsableWithImeAndBackClosesKeyboardBeforeDrawer() {
+        val target = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+        assertTrue("The emulator must provide a launchable app for the IME search test", target != null)
+        val packageName = target!!.activityInfo.packageName
+        val appLabel = target.loadLabel(composeRule.activity.packageManager).toString()
+        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        composeRule.onNodeWithTag("drawer-search-field").performClick()
+        val decor = composeRule.activity.window.decorView
+        composeRule.waitUntil(10_000) {
+            android.os.Build.VERSION.SDK_INT < 30 || decor.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true
+        }
+        assertTrue("Android 15 emulator must expose visible IME insets", android.os.Build.VERSION.SDK_INT < 30 ||
+            decor.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true)
+
+        composeRule.onNodeWithTag("drawer-search-field").performTextInput(appLabel)
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("drawer-app-$packageName").fetchSemanticsNodes().isNotEmpty() }
+        val searchBounds = composeRule.onNodeWithTag("app-drawer-search-container").fetchSemanticsNode().boundsInRoot
+        val listBounds = composeRule.onNodeWithTag("app-drawer-list").fetchSemanticsNode().boundsInRoot
+        val resultBounds = composeRule.onNodeWithTag("drawer-app-$packageName").fetchSemanticsNode().boundsInRoot
+        val imeBottom = decor.rootWindowInsets?.getInsets(android.view.WindowInsets.Type.ime())?.bottom ?: 0
+        val imeTopInWindow = decor.height - imeBottom
+        assertTrue("Search must remain above the IME: search=$searchBounds imeTop=$imeTopInWindow", searchBounds.bottom <= imeTopInWindow + 2)
+        assertTrue("Results must remain visible above the IME: result=$resultBounds imeTop=$imeTopInWindow", resultBounds.bottom <= imeTopInWindow + 2)
+        assertTrue("The list must retain usable height with the IME open: $listBounds", listBounds.height > 0f)
+
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        composeRule.waitUntil(10_000) {
+            android.os.Build.VERSION.SDK_INT < 30 || decor.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == false
+        }
+        composeRule.onNodeWithTag("app-drawer-surface").assertExists()
+        composeRule.onNodeWithTag("drawer-app-$packageName").assertExists()
+
+        composeRule.onNodeWithTag("drawer-search-field").performClick()
+        composeRule.waitUntil(10_000) {
+            android.os.Build.VERSION.SDK_INT < 30 || decor.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true
+        }
+        composeRule.onNodeWithTag("drawer-search-field").performTextClearance()
+        composeRule.onNodeWithTag("app-drawer-list").performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        val scrolledSearchBounds = composeRule.onNodeWithTag("app-drawer-search-container").fetchSemanticsNode().boundsInRoot
+        assertTrue("Scrolling results must not move the anchored search capsule", kotlin.math.abs(scrolledSearchBounds.top - searchBounds.top) < 2f)
+        composeRule.onNodeWithTag("drawer-search-field").performTextInput("nexo-qa-query-with-no-match")
+        composeRule.onNodeWithText("No se encontraron aplicaciones").assertExists()
+        composeRule.onNodeWithTag("drawer-search-field").performImeAction()
+        composeRule.waitUntil(10_000) {
+            android.os.Build.VERSION.SDK_INT < 30 || decor.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == false
+        }
+        composeRule.onNodeWithText("No se encontraron aplicaciones").assertExists()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("app-drawer-surface").assertCountEquals(0)
+    }
+
+    @Test
     fun homeSearchIsCompactCenteredAboveTheDock() {
         val search = composeRule.onNodeWithTag("open-app-drawer").fetchSemanticsNode().boundsInRoot
         val dock = composeRule.onNodeWithTag("dock-cell-0").fetchSemanticsNode().boundsInRoot
@@ -135,6 +193,202 @@ class HomeNavigationTest {
             if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
             if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
             edit.putInt("current_page", originalCurrentPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
+    fun folderCreatedInHomeEditorCanBeDraggedSwappedMovedAcrossPagesAndRestored() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalFolders = prefs.getString("user_folders", null)
+        val originalDock = prefs.getString("dock_packages", null)
+        val originalPage = prefs.getInt("current_page", 0)
+        val candidates = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .mapNotNull { info ->
+                val packageName = info.activityInfo.packageName
+                if (packageName == composeRule.activity.packageName) null
+                else packageName to info.loadLabel(composeRule.activity.packageManager).toString()
+            }
+            .distinctBy { it.first }
+            .sortedBy { it.second.lowercase() }
+        assertTrue("Need three launchable apps for folder drag/swap test", candidates.size >= 3)
+        val (firstPackage, firstLabel) = candidates[0]
+        val (secondPackage, secondLabel) = candidates[1]
+        val (swapPackage, _) = candidates[2]
+        val firstPage = MutableList(28) { "-" }.apply { this[12] = swapPackage }
+        val secondPage = MutableList(28) { "-" }
+        prefs.edit()
+            .putString("user_folders", "[]")
+            .putString("pages", listOf(firstPage, secondPage).joinToString("~") { it.joinToString("|") })
+            .putString("packages", firstPage.joinToString("|"))
+            .putString("dock_packages", "-|-|-|-")
+            .putInt("current_page", 0).commit()
+        try {
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-clock").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+            composeRule.onNodeWithTag("edit-configure").performClick()
+            composeRule.onNodeWithTag("configure-home-folder").performClick()
+            composeRule.onNodeWithTag("folder-name-field").performTextInput("Audit")
+            composeRule.onNodeWithTag("folder-app-select-$firstPackage").performClick()
+            composeRule.onNodeWithTag("folder-app-select-$secondPackage").performClick()
+            composeRule.onNodeWithText("Guardar").performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("home-folder-Audit").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("home-folder-Audit").performTouchInput { longClick() }
+            composeRule.waitForIdle()
+            composeRule.onAllNodesWithTag("home-edit-overlay").assertCountEquals(0)
+            assertTrue("A long press without movement must not relocate the folder", prefs.getString("pages", "").orEmpty().contains("folder:Audit"))
+
+            fun dragFolderTo(targetTag: String) {
+                val sourceNode = composeRule.onNodeWithTag("home-folder-Audit")
+                val source = sourceNode.fetchSemanticsNode().boundsInRoot
+                val targetNode = composeRule.onNodeWithTag(targetTag, useUnmergedTree = true)
+                val target = targetNode.fetchSemanticsNode().boundsInRoot.center
+                sourceNode.performTouchInput {
+                    val origin = source.center - source.topLeft
+                    val destination = target - source.topLeft
+                    down(origin)
+                    advanceEventTime(700)
+                    for (step in 1..12) {
+                        val fraction = step / 12f
+                        moveTo(origin + (destination - origin) * fraction, 35)
+                    }
+                    advanceEventTime(80)
+                    up()
+                }
+                composeRule.waitForIdle()
+            }
+
+            dragFolderTo("home-cell-11")
+            composeRule.waitUntil(5_000) {
+                prefs.getString("pages", "").orEmpty().split("~").firstOrNull()?.split("|")?.getOrNull(11) == "folder:Audit"
+            }
+            var savedPages = prefs.getString("pages", "").orEmpty().split("~").map { it.split("|") }
+            assertEquals("Folder should leave its source cell", "-", savedPages[0][8])
+            assertEquals("Folder should not be duplicated", 1, savedPages.sumOf { page -> page.count { it == "folder:Audit" } })
+
+            dragFolderTo("home-cell-12")
+            composeRule.waitUntil(5_000) {
+                val page = prefs.getString("pages", "").orEmpty().split("~").firstOrNull()?.split("|").orEmpty()
+                page.getOrNull(12) == "folder:Audit" && page.getOrNull(11) == swapPackage
+            }
+            savedPages = prefs.getString("pages", "").orEmpty().split("~").map { it.split("|") }
+            assertEquals("Dropping a folder on an app must swap grid positions", "folder:Audit", savedPages[0][12])
+            assertEquals("The app must move into the folder's former cell, not into its contents", swapPackage, savedPages[0][11])
+            val serializedFolder = prefs.getString("user_folders", "").orEmpty()
+            assertTrue("Folder members must remain unchanged by a positional swap", serializedFolder.contains(firstPackage) && serializedFolder.contains(secondPackage) && !serializedFolder.contains(swapPackage))
+
+            dragFolderTo("home-page-indicator-1")
+            composeRule.waitUntil(5_000) {
+                val pages = prefs.getString("pages", "").orEmpty().split("~")
+                pages.getOrNull(1)?.split("|")?.getOrNull(8) == "folder:Audit" && prefs.getInt("current_page", -1) == 1
+            }
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithTag("home-folder-Audit").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("home-folder-Audit").performClick()
+            composeRule.onNodeWithText(firstLabel).assertExists()
+            composeRule.onNodeWithText(secondLabel).assertExists()
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+            composeRule.waitForIdle()
+
+            dragFolderTo("home-page-indicator-0")
+            composeRule.waitUntil(5_000) {
+                val pages = prefs.getString("pages", "").orEmpty().split("~")
+                pages[0].contains("folder:Audit") && "folder:Audit" !in pages[1]
+            }
+            assertEquals("Folder position must remain unique after moving back to the previous page", 1,
+                prefs.getString("pages", "").orEmpty().split("~").sumOf { it.split("|").count { token -> token == "folder:Audit" } })
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithTag("home-folder-Audit").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("home-folder-Audit").performClick()
+            composeRule.onNodeWithText(firstLabel).assertExists()
+            composeRule.onNodeWithText(secondLabel).assertExists()
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
+            if (originalDock == null) edit.remove("dock_packages") else edit.putString("dock_packages", originalDock)
+            edit.putInt("current_page", originalPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
+    fun folderCreatedByDraggingAppsCanBeMovedAndPersistsAsOneGridItem() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalFolders = prefs.getString("user_folders", null)
+        val originalPage = prefs.getInt("current_page", 0)
+        val packages = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(2)
+        assertEquals("Need two real installed launcher activities", 2, packages.size)
+        val page = MutableList(28) { "-" }.apply { this[8] = packages[0]; this[9] = packages[1] }
+        prefs.edit().putString("user_folders", "[]")
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        try {
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-page-app").fetchSemanticsNodes().size >= 2 }
+            val sourceNode = composeRule.onAllNodesWithTag("home-page-app").get(0)
+            val source = sourceNode.fetchSemanticsNode().boundsInRoot
+            val targetNode = composeRule.onNodeWithTag("home-cell-9", useUnmergedTree = true)
+            val target = targetNode.fetchSemanticsNode().boundsInRoot.center
+            sourceNode.performTouchInput {
+                val origin = source.center - source.topLeft
+                val destination = target - source.topLeft
+                down(origin)
+                advanceEventTime(700)
+                for (step in 1..12) moveTo(origin + (destination - origin) * (step / 12f), 35)
+                up()
+            }
+            composeRule.waitUntil(5_000) {
+                prefs.getString("pages", "").orEmpty().split("|").getOrNull(9)?.startsWith("folder:") == true
+            }
+            val folderToken = prefs.getString("pages", "").orEmpty().split("|")[9]
+            val folderName = folderToken.removePrefix("folder:")
+            assertEquals("Dragged shortcut must leave its old cell", "-", prefs.getString("pages", "").orEmpty().split("|")[8])
+            composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-folder-$folderName").fetchSemanticsNodes().isNotEmpty() }
+
+            val folderNode = composeRule.onNodeWithTag("home-folder-$folderName")
+            val folderBounds = folderNode.fetchSemanticsNode().boundsInRoot
+            val nextCell = composeRule.onNodeWithTag("home-cell-10", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+            folderNode.performTouchInput {
+                val origin = folderBounds.center - folderBounds.topLeft
+                val destination = nextCell - folderBounds.topLeft
+                down(origin)
+                advanceEventTime(700)
+                for (step in 1..12) moveTo(origin + (destination - origin) * (step / 12f), 35)
+                up()
+            }
+            composeRule.waitUntil(5_000) {
+                prefs.getString("pages", "").orEmpty().split("|").getOrNull(10) == folderToken
+            }
+            assertEquals("App-drag folder must be stored exactly once", 1,
+                prefs.getString("pages", "").orEmpty().split("|").count { it == folderToken })
+            assertTrue("Both applications must remain inside the persisted folder", prefs.getString("user_folders", "").orEmpty().contains(packages[0]) && prefs.getString("user_folders", "").orEmpty().contains(packages[1]))
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-$folderName").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals("Folder slot must survive Activity recreation", folderToken,
+                prefs.getString("pages", "").orEmpty().split("|").getOrNull(10))
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
+            edit.putInt("current_page", originalPage).commit()
             composeRule.activityRule.scenario.recreate()
         }
     }

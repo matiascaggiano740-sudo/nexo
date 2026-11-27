@@ -154,9 +154,13 @@ monitor_test() {
 }
 
 methods=(
+  iconSizeSettingsPreviewAndPersistTheSelectedScale
   drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned
+  drawerSearchStaysUsableWithImeAndBackClosesKeyboardBeforeDrawer
   homeSearchIsCompactCenteredAboveTheDock
   folderPreviewUsesNineAlignedIconsAndFolderEditingHasNoStaticLabel
+  folderCreatedInHomeEditorCanBeDraggedSwappedMovedAcrossPagesAndRestored
+  folderCreatedByDraggingAppsCanBeMovedAndPersistsAsOneGridItem
   homeEditUsesLivePocoStyleOverlayAndNoDoubleTapLock
   doubleTapEmptyHomeCellDoesNotTriggerLockFeature
   activityAlwaysRequestsTheLiveAndroidWallpaper
@@ -165,6 +169,8 @@ methods=(
   appCanBeRemovedFromHomeWithoutUninstallingIt
   widgetPickerUsesNexoFullScreenLayoutWithSearchAndProviderPreview
   longPressingHomeAppEntersPocoEditModeWithoutLaunchingIt
+  appCanBeDraggedToTrashWhileEditingWithoutUninstallingIt
+  appsCanBeDraggedToTrashFromHomeWithoutUninstallingThem
   swipeUpOnHomeOpensTheAppDrawer
   swipeDownAtTopOfDrawerClosesIt
   emptyPageCanBeDeletedFromLiveEditMode
