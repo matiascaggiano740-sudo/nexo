@@ -269,7 +269,6 @@ class HomeNavigationTest {
             if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
             if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
             edit.putInt("current_page", originalCurrentPage).commit()
-            composeRule.activityRule.scenario.recreate()
         }
     }
 
