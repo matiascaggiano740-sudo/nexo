@@ -163,7 +163,7 @@ methods=(
   savedHomeQuoteCanBeRemovedWithoutReturningAsDefault
   appsCanBeRemovedFromCreatedPageWithoutChangingHome
   appCanBeRemovedFromHomeWithoutUninstallingIt
-  widgetPickerShowsVisualPreviewCards
+  widgetPickerUsesNexoFullScreenLayoutWithSearchAndProviderPreview
   longPressingHomeAppEntersPocoEditModeWithoutLaunchingIt
   swipeUpOnHomeOpensTheAppDrawer
   swipeDownAtTopOfDrawerClosesIt
