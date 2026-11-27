@@ -11,6 +11,9 @@ test -s "$new_apk" || { echo 'New Release APK is missing.' >&2; exit 1; }
 echo "Historical APK: $old_apk"
 echo "Candidate APK: $new_apk"
 apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+expected_version_code=$("$aapt" dump badging "$new_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
+test -n "$expected_version_code" || { echo 'Could not read candidate versionCode.' >&2; exit 1; }
 old_cert="$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
 new_cert="$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
 test "$old_cert" = "$EXPECTED_CERT_SHA256" || { echo 'Historical APK certificate mismatch.' >&2; exit 1; }
@@ -30,7 +33,7 @@ printf 'Seed instrumentation exit code: %s\n%s\n' "$seed_status" "$seed_result"
 test "$seed_status" -eq 0 && echo "$seed_result" | grep -Fq 'OK (1 test)' || { echo 'Failed while seeding user data on historical APK.' >&2; exit 1; }
 adb install -r "$new_apk"
 set +e
-upgrade_result="$(adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
+upgrade_result="$(adb shell am instrument -w -e expectedVersionCode "$expected_version_code" -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
 upgrade_status=$?
 set -e
 printf 'Upgrade instrumentation exit code: %s\n%s\n' "$upgrade_status" "$upgrade_result"
