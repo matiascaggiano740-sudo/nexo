@@ -208,6 +208,26 @@ fun Home() {
         ctx.getSharedPreferences("nexo_home", 0).edit().putInt("current_page", index).apply()
     }
     var userFolders by remember { mutableStateOf(readUserFolders(ctx)) }
+    fun removeHomeItem(token: String) {
+        if (token.isBlank() || token == "-") return
+        val updatedPages = homePages.map { it.toMutableList() }.toMutableList()
+        val sourcePage = updatedPages.indexOfFirst { token in it }
+        if (sourcePage < 0) return
+        val sourceIndex = updatedPages[sourcePage].indexOf(token)
+        if (sourceIndex < 0) return
+        updatedPages[sourcePage][sourceIndex] = "-"
+        val updatedFolders = if (token.startsWith("folder:")) {
+            userFolders.filterNot { it.first == token.removePrefix("folder:") }
+        } else userFolders
+        val committedPages = updatedPages.map { it.toList() }
+        if (!commitHomeStructure(ctx, committedPages, updatedFolders)) {
+            Toast.makeText(ctx, "No se pudo quitar el elemento del inicio", Toast.LENGTH_SHORT).show()
+            return
+        }
+        userFolders = updatedFolders
+        homePages = committedPages
+        homePackages = committedPages.getOrNull(currentPage).orEmpty()
+    }
     var folderEditor by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var showNewFolder by remember { mutableStateOf(false) }
     var showPageManager by remember { mutableStateOf(false) }
@@ -823,25 +843,10 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         iconSizing = iconSizing,
                         onLongPress = { editingHome = true },
                         onAppClick = { if (!editingHome) app?.let { runCatching { ctx.startActivity(it.intent) } } },
-                        onRemove = { pkg ->
-                            val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
-                            val idx = slots.indexOf(pkg)
-                            if (idx >= 0) slots[idx] = "-"
-                            val updatedFolders = if (pkg.startsWith("folder:")) {
-                                val removedName = pkg.removePrefix("folder:")
-                                userFolders.filterNot { it.first == removedName }
-                            } else userFolders
-                            val updatedPages = homePages.toMutableList().apply {
-                                while (size <= currentPage) add(emptyList())
-                                this[currentPage] = slots
-                            }.map { it.toList() }
-                            if (commitHomeStructure(ctx, updatedPages, updatedFolders)) {
-                                userFolders = updatedFolders
-                                homePages = updatedPages
-                                homePackages = updatedPages.getOrNull(currentPage).orEmpty()
-                            } else {
-                                Toast.makeText(ctx, "No se pudo quitar el elemento del inicio", Toast.LENGTH_SHORT).show()
-                            }
+                        onRemove = { pkg -> removeHomeItem(pkg) },
+                        trashBounds = trashTargetBounds,
+                        onTrashDrop = { payload ->
+                            removeHomeItem(payload.removePrefix("home:").removePrefix("dock:"))
                         },
                         cellBounds = homeCellBounds,
                         dockCellBounds = dockCellBounds,
@@ -1124,6 +1129,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                 size = 60.dp,
                 onClick = {},
                 testTag = "dragging-folder-preview",
+                interactive = false,
                 modifier = Modifier
                     .offset { IntOffset((position.x - 30.dp.value * density).toInt(), (position.y - 30.dp.value * density).toInt()) }
                     .zIndex(30f)
@@ -2293,6 +2299,8 @@ private fun HomeAppCell(
     }
 
     val dragPayload = app?.let { "home:${it.pkg}" } ?: folderName?.let { "folder:$it" }
+    val latestTrashBounds by rememberUpdatedState(trashBounds)
+    val latestOnTrashDrop by rememberUpdatedState(onTrashDrop)
     var layoutCoordinates by remember(index) { mutableStateOf<LayoutCoordinates?>(null) }
     Box(
         Modifier
@@ -2331,7 +2339,7 @@ private fun HomeAppCell(
                         val homeDestination = cellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         val dockDestination = dockCellBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
                         val pageDestination = pageIndicatorBounds.entries.firstOrNull { entry -> entry.value.contains(rootPosition) }?.key
-                        if (trashBounds?.contains(rootPosition) == true) onTrashDrop(dragPayload)
+                        if (latestTrashBounds?.contains(rootPosition) == true) latestOnTrashDrop(dragPayload)
                         else if (homeDestination != null) onDrop(dragPayload, homeDestination)
                         else if (dockDestination != null && app != null) onDockDrop(dragPayload, dockDestination)
                         else if (pageDestination != null) onPageDrop(dragPayload, pageDestination)
@@ -2508,6 +2516,33 @@ private fun appCategory(app: AppItem): String {
 
         else ->
             "Otras"
+    }
+}
+
+private fun buildDrawerCategories(
+    apps: List<AppItem>,
+    query: String,
+    playCategories: Map<String, String>,
+    manualCategories: Map<String, String>
+): List<Pair<String, List<AppItem>>> {
+    val filtered = apps.filter { it.label.contains(query.trim(), ignoreCase = true) }
+    if (query.isNotBlank()) {
+        return if (filtered.isEmpty()) emptyList()
+        else listOf("Resultados" to filtered.sortedBy { it.label.lowercase(Locale.ROOT) })
+    }
+    return listOf(
+        "Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas",
+        "Compras", "Comida", "Productividad", "Comunicación", "Noticias y lectura",
+        "Herramientas", "Otras"
+    ).mapNotNull { name ->
+        val members = filtered.filter { app ->
+            val category = manualCategories[app.pkg]
+                ?: playCategories[app.pkg]
+                ?: if (app.matchesAny("grido", "chef", "daniel", "mcdonald", "pedidosya", "rappi")) "Comida"
+                else appCategory(app)
+            category == name
+        }
+        if (members.isEmpty()) null else name to members
     }
 }
 
@@ -2853,32 +2888,19 @@ var manualCategories by remember {
             .toMap()
     )
 }
-      LaunchedEffect(q) {
+      val imeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(q) {
         drawerListState.scrollToItem(0)
     }
     val categories = remember(apps, q, playCategories, manualCategories) {
-        val filtered = apps.filter { it.label.contains(q.trim(), ignoreCase = true) }
-        if (q.isNotBlank()) {
-            if (filtered.isEmpty()) emptyList() else listOf("Resultados" to filtered.sortedBy { it.label.lowercase(Locale.ROOT) })
-        } else listOf("Redes Sociales", "Multimedia", "Juegos", "Google", "Mapas y viajes", "Finanzas", "Compras", "Comida", "Productividad", "Comunicación", "Noticias y lectura", "Herramientas", "Otras").mapNotNull { name ->
-              val members = filtered.filter { app ->
-    (
-        manualCategories[app.pkg]
-            ?: playCategories[app.pkg]
-            ?: if (app.matchesAny("grido", "chef", "daniel", "mcdonald", "pedidosya", "rappi")) "Comida"
-            else appCategory(app)
-    ) == name
-}
-
-            if (members.isEmpty()) null else name to members
-        }
+        buildDrawerCategories(apps, q, playCategories, manualCategories)
     }
     Column(
         Modifier.fillMaxSize().background(Color(0xFF171411))
             .statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 20.dp)
             .testTag("app-drawer-surface")
-            .pointerInput(drawerListState, WindowInsets.isImeVisible) {
-                if (!WindowInsets.isImeVisible) {
+            .pointerInput(drawerListState, imeVisible) {
+                if (!imeVisible) {
                     var verticalDistance = 0f
                     var startedAtTop = false
                     var startedAtBottom = false

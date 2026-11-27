@@ -173,6 +173,44 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun drawerSearchStillWorksAfterCreatingAndSelectingAnotherHomePage() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalCurrentPage = prefs.getInt("current_page", 0)
+        val target = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+        assertTrue("Need a real launcher app after changing Home pages", target != null)
+        val selectedTarget = target ?: error("No launcher app available")
+        try {
+            composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+            composeRule.onNodeWithTag("add-home-page").performClick()
+            composeRule.waitUntil(5_000) { prefs.getInt("current_page", -1) == 1 }
+            composeRule.onNodeWithTag("finish-home-edit").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("open-app-drawer").performClick()
+            composeRule.onNodeWithTag("drawer-search-field").performClick()
+            composeRule.onNodeWithTag("drawer-search-field").performTextInput(selectedTarget.loadLabel(composeRule.activity.packageManager).toString())
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("drawer-app-${selectedTarget.activityInfo.packageName}").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("drawer-app-${selectedTarget.activityInfo.packageName}").assertExists()
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("drawer-search-field").assertExists()
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("app-drawer-surface").fetchSemanticsNodes().isEmpty() }
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            edit.putInt("current_page", originalCurrentPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
     fun homeSearchIsCompactCenteredAboveTheDock() {
         val search = composeRule.onNodeWithTag("open-app-drawer").fetchSemanticsNode().boundsInRoot
         val dock = composeRule.onNodeWithTag("dock-cell-0").fetchSemanticsNode().boundsInRoot
@@ -269,6 +307,8 @@ class HomeNavigationTest {
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithTag("home-folder-Audit").fetchSemanticsNodes().isNotEmpty()
             }
+            composeRule.onNodeWithTag("finish-home-edit").performClick()
+            composeRule.waitForIdle()
             composeRule.onNodeWithTag("home-folder-Audit").performTouchInput { longClick() }
             composeRule.waitForIdle()
             composeRule.onAllNodesWithTag("home-edit-overlay").assertCountEquals(0)
@@ -295,6 +335,8 @@ class HomeNavigationTest {
             }
 
             val originalSlotPages = prefs.getString("pages", "")
+            dragFolderTo("home-clock")
+            assertEquals("Releasing a dragged folder on the header outside the grid cancels the move", originalSlotPages, prefs.getString("pages", ""))
             dragFolderTo("home-cell-8")
             assertEquals("Dropping a folder back onto its own cell must be a no-op", originalSlotPages, prefs.getString("pages", ""))
 
@@ -356,6 +398,57 @@ class HomeNavigationTest {
             if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
             if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
             if (originalDock == null) edit.remove("dock_packages") else edit.putString("dock_packages", originalDock)
+            edit.putInt("current_page", originalPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
+    fun draggingFolderToTrashRemovesItsTokenAndMetadataWithoutDeletingMemberApps() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalFolders = prefs.getString("user_folders", null)
+        val originalPage = prefs.getInt("current_page", 0)
+        val packages = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(2)
+        assertEquals("Need two installed app members in the real folder", 2, packages.size)
+        val page = MutableList(28) { "-" }.apply { this[8] = "folder:TrashAudit" }
+        prefs.edit().putString("user_folders", "[{\"name\":\"TrashAudit\",\"packages\":[\"${packages[0]}\",\"${packages[1]}\"]}]")
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        try {
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-TrashAudit").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
+            composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag("home-trash-target").fetchSemanticsNodes().isNotEmpty() }
+            val folder = composeRule.onNodeWithTag("home-folder-TrashAudit")
+            val bounds = folder.fetchSemanticsNode().boundsInRoot
+            val trash = composeRule.onNodeWithTag("home-trash-target").fetchSemanticsNode().boundsInRoot.center
+            folder.performTouchInput {
+                val origin = bounds.center - bounds.topLeft
+                down(origin)
+                advanceEventTime(700)
+                val destination = trash - bounds.topLeft
+                for (step in 1..14) moveTo(origin + (destination - origin) * (step / 14f), 35)
+                up()
+            }
+            composeRule.waitUntil(5_000) {
+                val savedPages = prefs.getString("pages", "").orEmpty()
+                val savedFolders = prefs.getString("user_folders", "").orEmpty()
+                !savedPages.contains("folder:TrashAudit") && !savedFolders.contains("TrashAudit")
+            }
+            assertTrue("Folder member apps must remain installed after removing the Home folder", packages.all { packageName ->
+                runCatching { composeRule.activity.packageManager.getApplicationInfo(packageName, 0) }.isSuccess
+            })
+            assertEquals("Only the folder's Home shortcut is removed", "-", prefs.getString("pages", "").orEmpty().split("|")[8])
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
             edit.putInt("current_page", originalPage).commit()
             composeRule.activityRule.scenario.recreate()
         }
