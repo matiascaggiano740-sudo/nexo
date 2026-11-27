@@ -96,12 +96,17 @@ class OtaEndToEndTest {
     }
 
     private fun assertAvailableRelease() {
+        val args = InstrumentationRegistry.getArguments()
+        val versionCode = args.getString("targetVersionCode")?.toLongOrNull()
+            ?: error("OTA test must receive targetVersionCode instrumentation argument")
+        val versionName = args.getString("targetVersionName")
+            ?: error("OTA test must receive targetVersionName instrumentation argument")
         composeRule.waitUntil(20_000) {
-            composeRule.onAllNodesWithText("Versión 1.0.0 · código 1001").fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithText("Versión $versionName · código $versionCode").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onAllNodesWithText("Publicada: 2026-11-25T09:00:00Z").assertCountEquals(1)
         composeRule.onAllNodesWithText("OTA E2E controlled release; no public release").assertCountEquals(1)
-        Log.i(TAG, "E2E: UI showed version 1.0.0/code 1001, publication date, and controlled changelog")
+        Log.i(TAG, "E2E: UI showed version $versionName/code $versionCode, publication date, and controlled changelog")
     }
 
     private fun topActivityDump(): String {
@@ -180,7 +185,12 @@ class OtaEndToEndTest {
                         path.startsWith("/assets/nexo-update.json") -> {
                             val hash = if (mode.get() == Mode.BAD_HASH) "00".repeat(32) else goodHash
                             val candidatePath = if (mode.get() == Mode.BAD_HASH) "/apk/candidate-bad-hash.apk" else "/apk/candidate-valid.apk"
-                            val json = """{"applicationId":"com.nexo.launcher","versionCode":1001,"versionName":"1.0.0","publishedAt":"2026-11-25T09:00:00Z","changelog":"OTA E2E controlled release; no public release","apkUrl":"$baseUrl$candidatePath","sha256":"$hash","signingCertificateSha256":"${UpdateManager.EXPECTED_CERT_SHA256}"}"""
+                            val args = InstrumentationRegistry.getArguments()
+                            val targetCode = args.getString("targetVersionCode")?.toLongOrNull()
+                                ?: error("Missing targetVersionCode instrumentation argument")
+                            val targetName = args.getString("targetVersionName")
+                                ?: error("Missing targetVersionName instrumentation argument")
+                            val json = """{"applicationId":"com.nexo.launcher","versionCode":$targetCode,"versionName":"$targetName","publishedAt":"2026-11-25T09:00:00Z","changelog":"OTA E2E controlled release; no public release","apkUrl":"$baseUrl$candidatePath","sha256":"$hash","signingCertificateSha256":"${UpdateManager.EXPECTED_CERT_SHA256}"}"""
                             respond(client, 200, "application/json", json.toByteArray())
                         }
                         path.startsWith("/apk/candidate-") -> {
@@ -222,7 +232,9 @@ class OtaPostInstallVerificationTest {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
         @Suppress("DEPRECATION")
         val version = if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-        assertEquals(1001L, version)
+        val targetCode = InstrumentationRegistry.getArguments().getString("targetVersionCode")?.toLongOrNull()
+            ?: error("OTA test must receive targetVersionCode instrumentation argument")
+        assertEquals(targetCode, version)
         Log.i("NexoOtaE2E", "POST-OTA: installed versionCode=$version and both user preference markers survived")
     }
 }

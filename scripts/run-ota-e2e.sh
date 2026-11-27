@@ -4,7 +4,10 @@ set -euo pipefail
 ARTIFACTS="$GITHUB_WORKSPACE/ota-e2e-artifacts"
 mkdir -p "$ARTIFACTS"
 APK="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/ota-candidate-release.apk"
-OLD="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/nexo-test-base-v1000.apk"
+: "${TARGET_VERSION_CODE:?TARGET_VERSION_CODE must come from version.properties}"
+: "${TARGET_VERSION_NAME:?TARGET_VERSION_NAME must come from version.properties}"
+BASE_VERSION_CODE=$((TARGET_VERSION_CODE - 1))
+OLD="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/nexo-test-base-v${BASE_VERSION_CODE}.apk"
 TEST_APK="$GITHUB_WORKSPACE/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 SIGNED_TEST_APK="$GITHUB_WORKSPACE/app/build/outputs/ota-fixtures/app-debug-androidTest-signed.apk"
 APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
@@ -21,7 +24,11 @@ adb shell appops set com.nexo.launcher REQUEST_INSTALL_PACKAGES allow
 adb shell pm grant com.nexo.launcher android.permission.REQUEST_INSTALL_PACKAGES >/dev/null 2>&1 || true
 
 set +e
-first="$(adb shell am instrument -w -e class 'com.nexo.launcher.OtaEndToEndTest#realUpdaterRejectsBadHashThenOpensAndroidInstallerForVerifiedRelease' com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
+first="$(adb shell am instrument -w \
+  -e targetVersionCode "$TARGET_VERSION_CODE" \
+  -e targetVersionName "$TARGET_VERSION_NAME" \
+  -e class 'com.nexo.launcher.OtaEndToEndTest#realUpdaterRejectsBadHashThenOpensAndroidInstallerForVerifiedRelease' \
+  com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
 first_status=$?
 set -e
 printf '%s\n' "$first" | tee "$ARTIFACTS/ota-ui-instrumentation.txt"
@@ -74,19 +81,23 @@ PY
 done
 test "$confirmed" -eq 1 || { echo 'Could not find the Install/Update confirmation control in Android PackageInstaller UI.' >&2; exit 1; }
 
-echo 'Waiting for Android PackageInstaller to install versionCode=1001.' | tee -a "$ARTIFACTS/installer-confirmation.txt"
+echo "Waiting for Android PackageInstaller to install versionCode=$TARGET_VERSION_CODE." | tee -a "$ARTIFACTS/installer-confirmation.txt"
 for attempt in $(seq 1 60); do
   adb shell dumpsys package com.nexo.launcher > "$ARTIFACTS/installed-package-dump.txt" 2>&1 || true
-  if grep -Eq 'versionCode=1001([[:space:]]|$)' "$ARTIFACTS/installed-package-dump.txt"; then installed=1; break; fi
+  if grep -Eq "versionCode=$TARGET_VERSION_CODE([[:space:]]|$)" "$ARTIFACTS/installed-package-dump.txt"; then installed=1; break; fi
   sleep 2
 done
 test "$installed" -eq 1 || { echo 'Android installer did not complete the OTA update.' >&2; exit 1; }
-echo 'Android PackageInstaller installed versionCode=1001.' | tee -a "$ARTIFACTS/installer-confirmation.txt"
+echo "Android PackageInstaller installed versionCode=$TARGET_VERSION_CODE." | tee -a "$ARTIFACTS/installer-confirmation.txt"
 
 adb shell dumpsys activity activities > "$ARTIFACTS/installer-activity-after-install.txt" || true
 # Run a fresh instrumented process against the updated app after Android killed the old activity.
 set +e
-timeout 120s adb shell am instrument -w -e class 'com.nexo.launcher.OtaPostInstallVerificationTest#installedCandidateHasVersionAndUserPreferencesSurvived' com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee "$ARTIFACTS/post-install-instrumentation.txt"
+timeout 120s adb shell am instrument -w \
+  -e targetVersionCode "$TARGET_VERSION_CODE" \
+  -e targetVersionName "$TARGET_VERSION_NAME" \
+  -e class 'com.nexo.launcher.OtaPostInstallVerificationTest#installedCandidateHasVersionAndUserPreferencesSurvived' \
+  com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner 2>&1 | tee "$ARTIFACTS/post-install-instrumentation.txt"
 post_status=${PIPESTATUS[0]}
 set -e
 if (( post_status != 0 )); then

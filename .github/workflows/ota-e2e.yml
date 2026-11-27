@@ -60,6 +60,12 @@ jobs:
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          TARGET_VERSION_CODE=$(sed -n 's/^VERSION_CODE=//p' version.properties)
+          TARGET_VERSION_NAME=$(sed -n 's/^VERSION_NAME=//p' version.properties)
+          test -n "$TARGET_VERSION_CODE" && test -n "$TARGET_VERSION_NAME"
+          test "$TARGET_VERSION_CODE" -gt 1
+          echo "TARGET_VERSION_CODE=$TARGET_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "TARGET_VERSION_NAME=$TARGET_VERSION_NAME" >> "$GITHUB_ENV"
           retry_gradle() {
             local attempt=1 status=0
             while (( attempt <= 7 )); do
@@ -83,7 +89,7 @@ jobs:
           "$aapt" dump badging "$apk" | sed -n '1p' | tee app/build/outputs/ota-fixtures/candidate-identity.txt
           "$apksigner" verify --print-certs "$apk" | tee app/build/outputs/ota-fixtures/candidate-signing.txt
           sha256sum "$apk" | tee app/build/outputs/ota-fixtures/candidate-sha256.txt
-          grep -F "package: name='com.nexo.launcher' versionCode='1001' versionName='1.0.0'" app/build/outputs/ota-fixtures/candidate-identity.txt
+          grep -F "package: name='com.nexo.launcher' versionCode='$TARGET_VERSION_CODE' versionName='$TARGET_VERSION_NAME'" app/build/outputs/ota-fixtures/candidate-identity.txt
           grep -F '058532948c51385e15884cb14dc6a916deb3bc8d42d170a1c70336467d99a463' app/build/outputs/ota-fixtures/candidate-signing.txt
 
       - name: Build lower-version CI-only target and instrumentation APK with existing certificate
@@ -106,23 +112,26 @@ jobs:
             return "$status"
           }
           endpoint='http://127.0.0.1:8765/repos/matiascaggiano740-sudo/nexo/releases/latest'
+          BASE_VERSION_CODE=$((TARGET_VERSION_CODE - 1))
           retry_gradle assembleDebug assembleDebugAndroidTest \
-            -Pnexo.test.versionCode=1000 \
+            -Pnexo.test.versionCode="$BASE_VERSION_CODE" \
             -Pnexo.test.updateApiUrl="$endpoint" \
             -Pnexo.test.allowCleartext=true \
             -Pnexo.test.allowLoopbackHttp=true \
-            -Pnexo.test.signDebugWithRelease=true
-          base_apk=app/build/outputs/ota-fixtures/nexo-test-base-v1000.apk
+            -Pnexo.test.signDebugWithRelease=true \
+            -Pandroid.testInstrumentationRunnerArguments.targetVersionCode="$TARGET_VERSION_CODE" \
+            -Pandroid.testInstrumentationRunnerArguments.targetVersionName="$TARGET_VERSION_NAME"
+          base_apk="app/build/outputs/ota-fixtures/nexo-test-base-v${BASE_VERSION_CODE}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$base_apk"
           test_apk=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           test -s "$test_apk"
           aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
           apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
           "$aapt" dump badging "$base_apk" | sed -n '1p' | tee app/build/outputs/ota-fixtures/base-identity.txt
-          grep -F "package: name='com.nexo.launcher' versionCode='1000' versionName='1.0.0'" app/build/outputs/ota-fixtures/base-identity.txt
+          grep -F "package: name='com.nexo.launcher' versionCode='$BASE_VERSION_CODE' versionName='$TARGET_VERSION_NAME'" app/build/outputs/ota-fixtures/base-identity.txt
           "$apksigner" verify --print-certs "$base_apk" | tee app/build/outputs/ota-fixtures/base-signing.txt
           grep -F '058532948c51385e15884cb14dc6a916deb3bc8d42d170a1c70336467d99a463' app/build/outputs/ota-fixtures/base-signing.txt
-          echo "CI-only versionCode 1000 base and instrumentation APK ready; both use the existing NEXO release certificate."
+          echo "CI-only versionCode $BASE_VERSION_CODE base and instrumentation APK ready; OTA target is $TARGET_VERSION_NAME/code $TARGET_VERSION_CODE and both use the existing NEXO release certificate."
 
       - name: Run actual updater UI, local manifest/download, Android installer and post-upgrade assertions
         uses: reactivecircus/android-emulator-runner@v2
@@ -141,6 +150,8 @@ jobs:
           EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          TARGET_VERSION_CODE: ${{ env.TARGET_VERSION_CODE }}
+          TARGET_VERSION_NAME: ${{ env.TARGET_VERSION_NAME }}
 
       - name: Upload OTA test logs only (no APKs)
         if: always()
