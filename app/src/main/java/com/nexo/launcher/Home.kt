@@ -1611,22 +1611,15 @@ fun QuoteCard(
 @Composable
 fun FolderIcon(
     name: String, apps: List<AppItem>, size: Dp, onClick: () -> Unit,
-    dragPayload: String? = null,
     labelFontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
     labelTopGap: Dp = 6.dp,
     testTag: String? = null,
     interactive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val dragView = LocalView.current
-    val density = LocalDensity.current.density
     val previewIconSize = ((size - 10.dp) / 3).coerceAtLeast(12.dp)
-    val interactionModifier = if (interactive) Modifier.combinedClickable(onClick = onClick, onLongClick = {
-        if (dragPayload != null && apps.isNotEmpty()) {
-            val clip = ClipData.newPlainText("nexo-folder", dragPayload)
-            dragView.startDragAndDrop(clip, AppIconDragShadowBuilder(dragView, apps.first().icon.asAndroidBitmap(), (size.value * density).toInt().coerceAtLeast(48)), dragPayload, View.DRAG_FLAG_GLOBAL)
-        }
-    }) else Modifier
+    // HomeAppCell owns long-press/drag. Keep only a click semantic here to avoid nested drag detectors.
+    val interactionModifier = if (interactive) Modifier.clickable(onClick = onClick) else Modifier
     Column(modifier.width(size + 12.dp).then(interactionModifier).testTag(testTag ?: "home-folder-$name"), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size)) {
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(5.dp)) {
