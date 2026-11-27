@@ -212,8 +212,11 @@ class HomeNavigationTest {
         val label = target.loadLabel(composeRule.activity.packageManager).toString()
         composeRule.onNodeWithTag("open-app-drawer").performClick()
         composeRule.onNodeWithTag("drawer-search-field").performClick()
-        composeRule.onNodeWithTag("drawer-search-field").performTextInput(label)
         val resultTag = "drawer-app-$packageName"
+        val prefix = label.take(1)
+        composeRule.onNodeWithTag("drawer-search-field").performTextInput(prefix)
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag(resultTag).fetchSemanticsNodes().isNotEmpty() }
+        if (label.length > 1) composeRule.onNodeWithTag("drawer-search-field").performTextInput(label.drop(1))
         composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag(resultTag).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithTag(resultTag).performClick()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -395,8 +398,8 @@ class HomeNavigationTest {
             }
 
             val originalSlotPages = prefs.getString("pages", "")
-            dragFolderTo("home-clock")
-            assertEquals("Releasing a dragged folder on the header outside the grid cancels the move", originalSlotPages, prefs.getString("pages", ""))
+            dragFolderTo("dock-cell-0")
+            assertEquals("Dropping a folder on the app-only dock must cancel without changing its placement", originalSlotPages, prefs.getString("pages", ""))
             dragFolderTo("home-cell-8")
             assertEquals("Dropping a folder back onto its own cell must be a no-op", originalSlotPages, prefs.getString("pages", ""))
 
