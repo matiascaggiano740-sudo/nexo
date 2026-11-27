@@ -1609,17 +1609,19 @@ fun FolderIcon(
     labelFontSize: androidx.compose.ui.unit.TextUnit = 11.sp,
     labelTopGap: Dp = 6.dp,
     testTag: String? = null,
+    interactive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val dragView = LocalView.current
     val density = LocalDensity.current.density
     val previewIconSize = ((size - 10.dp) / 3).coerceAtLeast(12.dp)
-    Column(modifier.width(size + 12.dp).combinedClickable(onClick = onClick, onLongClick = {
+    val interactionModifier = if (interactive) Modifier.combinedClickable(onClick = onClick, onLongClick = {
         if (dragPayload != null && apps.isNotEmpty()) {
             val clip = ClipData.newPlainText("nexo-folder", dragPayload)
             dragView.startDragAndDrop(clip, AppIconDragShadowBuilder(dragView, apps.first().icon.asAndroidBitmap(), (size.value * density).toInt().coerceAtLeast(48)), dragPayload, View.DRAG_FLAG_GLOBAL)
         }
-    }).testTag(testTag ?: "home-folder-$name"), horizontalAlignment = Alignment.CenterHorizontally) {
+    }) else Modifier
+    Column(modifier.width(size + 12.dp).then(interactionModifier).testTag(testTag ?: "home-folder-$name"), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size)) {
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(size * 0.3f)).background(Glass).padding(5.dp)) {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
@@ -2380,6 +2382,7 @@ private fun HomeAppCell(
                 folderName, folderApps, iconSizing.iconSizeDp.dp, onFolderClick,
                 labelFontSize = iconSizing.labelFontSizeSp.sp,
                 labelTopGap = iconSizing.labelTopGapDp.dp,
+                interactive = false,
                 modifier = Modifier.graphicsLayer { alpha = if (isDragged) 0.28f else 1f }
             )
             if (editingHome) {
