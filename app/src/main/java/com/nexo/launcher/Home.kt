@@ -2490,6 +2490,7 @@ private fun AppWithCategoryMenu(
     }
 
 }
+// Use a dedicated full-screen catalog so provider previews remain readable on phone-sized displays.
 @Composable
 private fun WidgetPickerScreen(
     providers: List<AppWidgetProviderInfo>,
