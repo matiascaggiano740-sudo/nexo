@@ -145,11 +145,6 @@ private fun serializeUserFolders(folders: List<Pair<String, List<String>>>): Str
     return array.toString()
 }
 
-private fun writeUserFolders(ctx: android.content.Context, folders: List<Pair<String, List<String>>>) {
-    ctx.getSharedPreferences("nexo_home", 0).edit()
-        .putString("user_folders", serializeUserFolders(folders)).commit()
-}
-
 /** Persist the folder registry and its page tokens atomically so a crash cannot split the layout. */
 private fun commitHomeStructure(
     ctx: android.content.Context,
@@ -506,22 +501,21 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                     apps = latest
                     dock = dockPackages.mapNotNull { pkg -> latest.find { it.pkg == pkg } }
                     if (removed && changedPackage != null) {
-                        val previousFolders = userFolders
-                        userFolders = userFolders.map { it.first to it.second.filterNot { pkg -> pkg == changedPackage } }
-                            .filterNot { it.second.isEmpty() }
-                        val removedFolders = previousFolders.map { it.first }.toSet() - userFolders.map { it.first }.toSet()
-                        val pages = homePages.map { page -> page.map { token ->
+                        val updatedFolders = userFolders.map { folder ->
+                            folder.first to folder.second.filterNot { pkg -> pkg == changedPackage }
+                        }.filterNot { it.second.isEmpty() }
+                        val removedFolders = userFolders.map { it.first }.toSet() - updatedFolders.map { it.first }.toSet()
+                        val updatedPages = homePages.map { page -> page.map { token ->
                             if (token == changedPackage || (token.startsWith("folder:") && token.removePrefix("folder:") in removedFolders)) "-" else token
                         } }
-                        homePages = pages
-                        homePackages = pages.getOrNull(currentPage).orEmpty()
-                        writeUserFolders(ctx, userFolders)
-                        dockPackages = dockPackages.map { if (it == changedPackage) "-" else it }
-                        dock = dockPackages.mapNotNull { pkg -> latest.find { it.pkg == pkg } }
-                        ctx.getSharedPreferences("nexo_home", 0).edit()
-                            .putString("pages", pages.joinToString("~") { it.joinToString("|") })
-                            .putString("packages", pages.firstOrNull().orEmpty().joinToString("|"))
-                            .putString("dock_packages", dockPackages.joinToString("|")).apply()
+                        val updatedDock = dockPackages.map { if (it == changedPackage) "-" else it }
+                        if (commitHomeStructure(ctx, updatedPages, updatedFolders, updatedDock)) {
+                            userFolders = updatedFolders
+                            homePages = updatedPages
+                            homePackages = updatedPages.getOrNull(currentPage).orEmpty()
+                            dockPackages = updatedDock
+                            dock = updatedDock.mapNotNull { pkg -> latest.find { it.pkg == pkg } }
+                        }
                     }
                 }
             }
@@ -833,20 +827,21 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                             val slots = (if (homePackages.isEmpty() && currentPage == 0) priority.map { it.pkg }.toMutableList() else homePackages.toMutableList())
                             val idx = slots.indexOf(pkg)
                             if (idx >= 0) slots[idx] = "-"
-                            if (pkg.startsWith("folder:")) {
+                            val updatedFolders = if (pkg.startsWith("folder:")) {
                                 val removedName = pkg.removePrefix("folder:")
-                                userFolders = userFolders.filterNot { it.first == removedName }
-                                writeUserFolders(ctx, userFolders)
-                            }
+                                userFolders.filterNot { it.first == removedName }
+                            } else userFolders
                             val updatedPages = homePages.toMutableList().apply {
                                 while (size <= currentPage) add(emptyList())
                                 this[currentPage] = slots
+                            }.map { it.toList() }
+                            if (commitHomeStructure(ctx, updatedPages, updatedFolders)) {
+                                userFolders = updatedFolders
+                                homePages = updatedPages
+                                homePackages = updatedPages.getOrNull(currentPage).orEmpty()
+                            } else {
+                                Toast.makeText(ctx, "No se pudo quitar el elemento del inicio", Toast.LENGTH_SHORT).show()
                             }
-                            ctx.getSharedPreferences("nexo_home", 0).edit()
-                                .putString("packages", updatedPages.firstOrNull().orEmpty().joinToString("|"))
-                                .putString("pages", updatedPages.joinToString("~") { it.joinToString("|") }).apply()
-                            homePages = updatedPages
-                            homePackages = slots
                         },
                         cellBounds = homeCellBounds,
                         dockCellBounds = dockCellBounds,
@@ -894,8 +889,9 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                                             }
                                         }
                                         val removedNames = userFolders.map { it.first }.toSet() - updatedFolders.map { it.first }.toSet()
+                                        val sourceIndex = if (sourcePage >= 0) pages[sourcePage].indexOf(draggedPkg) else -1
                                         pages.forEach { page -> page.indices.forEach { index -> if (page[index].startsWith("folder:") && page[index].removePrefix("folder:") in removedNames) page[index] = "-" } }
-                                        if (sourcePage >= 0) pages[sourcePage][pages[sourcePage].indexOf(draggedPkg)] = "-"
+                                        if (sourcePage >= 0 && sourceIndex in pages[sourcePage].indices) pages[sourcePage][sourceIndex] = "-"
                                     }
                                 } else if (target != null && target != "-") {
                                     val existingApp = apps.firstOrNull { it.pkg == target }
@@ -2309,7 +2305,9 @@ private fun HomeAppCell(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val longPress = awaitLongPressOrCancellation(down.id)
                     if (longPress != null) {
-                        var enteredDragMode = false
+                        // App long-press keeps POCO's edit-entry behavior; a folder long-press is reserved for drag.
+                        var enteredDragMode = app != null
+                        if (enteredDragMode) onLongPress()
                         var rootPosition = layoutCoordinates?.localToRoot(longPress.position) ?: longPress.position
                         if (app != null) onDragPreview(app, rootPosition)
                         else if (folderName != null) onFolderDragPreview(folderName, folderApps, rootPosition)
@@ -2768,7 +2766,7 @@ private fun WidgetProviderPreviewCard(provider: AppWidgetProviderInfo, onClick: 
         shape = RoundedCornerShape(24.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6AE70).copy(alpha = 0.22f)),
         shadowElevation = 5.dp,
-        modifier = Modifier.fillMaxWidth().testTag("widget-provider-$packageName")
+        modifier = Modifier.fillMaxWidth().testTag("widget-provider-${provider.provider.flattenToString()}")
             .clickable(onClick = onClick)
     ) {
         Column(Modifier.fillMaxWidth().padding(11.dp)) {
@@ -2851,7 +2849,10 @@ var manualCategories by remember {
             .toMap()
     )
 }
-      val categories = remember(apps, q, playCategories, manualCategories) {
+      LaunchedEffect(q) {
+        drawerListState.scrollToItem(0)
+    }
+    val categories = remember(apps, q, playCategories, manualCategories) {
         val filtered = apps.filter { it.label.contains(q.trim(), ignoreCase = true) }
         if (q.isNotBlank()) {
             if (filtered.isEmpty()) emptyList() else listOf("Resultados" to filtered.sortedBy { it.label.lowercase(Locale.ROOT) })

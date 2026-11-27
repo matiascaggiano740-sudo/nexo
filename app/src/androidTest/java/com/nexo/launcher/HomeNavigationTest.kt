@@ -143,6 +143,36 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun drawerSearchResultLaunchesTheMatchingInstalledPackageAndReturnsToHome() {
+        val target = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .firstOrNull { it.activityInfo.packageName != composeRule.activity.packageName }
+        assertTrue("Need an installed launchable package for the drawer result test", target != null)
+        val packageName = target!!.activityInfo.packageName
+        val label = target.loadLabel(composeRule.activity.packageManager).toString()
+        composeRule.onNodeWithTag("open-app-drawer").performClick()
+        composeRule.onNodeWithTag("drawer-search-field").performClick()
+        composeRule.onNodeWithTag("drawer-search-field").performTextInput(label)
+        val resultTag = "drawer-app-$packageName"
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithTag(resultTag).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithTag(resultTag).performClick()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        composeRule.waitUntil(10_000) {
+            val descriptor = instrumentation.uiAutomation.executeShellCommand("dumpsys activity activities")
+            val dump = android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+            dump.lineSequence().any { line ->
+                (line.contains("mResumedActivity") || line.contains("topResumedActivity")) && line.contains(packageName)
+            }
+        }
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("home-surface").fetchSemanticsNodes().isNotEmpty() &&
+                composeRule.onAllNodesWithTag("app-drawer-surface").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithTag("home-surface").assertExists()
+    }
+
+    @Test
     fun homeSearchIsCompactCenteredAboveTheDock() {
         val search = composeRule.onNodeWithTag("open-app-drawer").fetchSemanticsNode().boundsInRoot
         val dock = composeRule.onNodeWithTag("dock-cell-0").fetchSemanticsNode().boundsInRoot
@@ -264,6 +294,10 @@ class HomeNavigationTest {
                 composeRule.waitForIdle()
             }
 
+            val originalSlotPages = prefs.getString("pages", "")
+            dragFolderTo("home-cell-8")
+            assertEquals("Dropping a folder back onto its own cell must be a no-op", originalSlotPages, prefs.getString("pages", ""))
+
             dragFolderTo("home-cell-11")
             composeRule.waitUntil(5_000) {
                 prefs.getString("pages", "").orEmpty().split("~").firstOrNull()?.split("|")?.getOrNull(11) == "folder:Audit"
@@ -272,14 +306,18 @@ class HomeNavigationTest {
             assertEquals("Folder should leave its source cell", "-", savedPages[0][8])
             assertEquals("Folder should not be duplicated", 1, savedPages.sumOf { page -> page.count { it == "folder:Audit" } })
 
+            dragFolderTo("home-cell-19")
+            composeRule.waitUntil(5_000) {
+                prefs.getString("pages", "").orEmpty().split("~").firstOrNull()?.split("|")?.getOrNull(19) == "folder:Audit"
+            }
             dragFolderTo("home-cell-12")
             composeRule.waitUntil(5_000) {
                 val page = prefs.getString("pages", "").orEmpty().split("~").firstOrNull()?.split("|").orEmpty()
-                page.getOrNull(12) == "folder:Audit" && page.getOrNull(11) == swapPackage
+                page.getOrNull(12) == "folder:Audit" && page.getOrNull(19) == swapPackage
             }
             savedPages = prefs.getString("pages", "").orEmpty().split("~").map { it.split("|") }
             assertEquals("Dropping a folder on an app must swap grid positions", "folder:Audit", savedPages[0][12])
-            assertEquals("The app must move into the folder's former cell, not into its contents", swapPackage, savedPages[0][11])
+            assertEquals("The app must move into the folder's former cell, not into its contents", swapPackage, savedPages[0][19])
             val serializedFolder = prefs.getString("user_folders", "").orEmpty()
             assertTrue("Folder members must remain unchanged by a positional swap", serializedFolder.contains(firstPackage) && serializedFolder.contains(secondPackage) && !serializedFolder.contains(swapPackage))
 
@@ -394,6 +432,64 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun draggingFolderOntoFolderMergesMembersWithoutCrashingOrDuplicatingTokens() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalFolders = prefs.getString("user_folders", null)
+        val originalPage = prefs.getInt("current_page", 0)
+        val apps = composeRule.activity.packageManager
+            .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.filter { it != composeRule.activity.packageName }.distinct().take(2)
+        assertEquals("Need two real app widgets for the folder merge", 2, apps.size)
+        val page = MutableList(28) { "-" }.apply { this[8] = "folder:Alpha"; this[9] = "folder:Beta" }
+        prefs.edit()
+            .putString("user_folders", "[{\"name\":\"Alpha\",\"packages\":[\"${apps[0]}\"]},{\"name\":\"Beta\",\"packages\":[\"${apps[1]}\"]}]")
+            .putString("pages", page.joinToString("|"))
+            .putString("packages", page.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        try {
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-Alpha").fetchSemanticsNodes().isNotEmpty() }
+            val sourceNode = composeRule.onNodeWithTag("home-folder-Alpha")
+            val source = sourceNode.fetchSemanticsNode().boundsInRoot
+            val destination = composeRule.onNodeWithTag("home-cell-9", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+            sourceNode.performTouchInput {
+                val origin = source.center - source.topLeft
+                val target = destination - source.topLeft
+                down(origin)
+                advanceEventTime(700)
+                for (step in 1..12) moveTo(origin + (target - origin) * (step / 12f), 35)
+                up()
+            }
+            composeRule.waitUntil(5_000) {
+                val prefsJson = prefs.getString("user_folders", "").orEmpty()
+                prefsJson.contains("Beta") && !prefsJson.contains("Alpha")
+            }
+            assertEquals("Merged folder must occupy target cell and source slot must be cleared", "folder:Beta",
+                prefs.getString("pages", "").orEmpty().split("|").getOrNull(9))
+            assertEquals("Source folder token should be removed", "-",
+                prefs.getString("pages", "").orEmpty().split("|").getOrNull(8))
+            assertEquals("Only one folder token remains", 1,
+                prefs.getString("pages", "").orEmpty().split("|").count { it.startsWith("folder:") })
+            val merged = prefs.getString("user_folders", "").orEmpty()
+            assertTrue("Merged folder keeps both real app packages", merged.contains(apps[0]) && merged.contains(apps[1]))
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-Beta").fetchSemanticsNodes().isNotEmpty() }
+            composeRule.onNodeWithTag("home-folder-Beta").performClick()
+            composeRule.waitForIdle()
+            assertTrue("Both app members remain in merged folder", prefs.getString("user_folders", "").orEmpty().contains(apps[0]) && prefs.getString("user_folders", "").orEmpty().contains(apps[1]))
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
+            edit.putInt("current_page", originalPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
     fun homeEditUsesLivePocoStyleOverlayAndNoDoubleTapLock() {
         composeRule.onNodeWithTag("home-clock").performTouchInput { longClick() }
         composeRule.waitForIdle()
@@ -484,6 +580,75 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun realInstalledWidgetCanBeSelectedHostedAndRestoredAfterActivityRecreation() {
+        val activity = composeRule.activity
+        val prefs = activity.getSharedPreferences("nexo_widgets", 0)
+        val originalIds = prefs.getString("ids", null)
+        val originalPages = prefs.getString("pages", null)
+        val originalCurrentPage = activity.getSharedPreferences("nexo_home", 0).getInt("current_page", 0)
+        val manager = android.appwidget.AppWidgetManager.getInstance(activity)
+        val provider = manager.installedProviders
+            .filter { it.provider.packageName != activity.packageName && it.configure == null }
+            .sortedBy { it.provider.flattenToString() }
+            .firstOrNull()
+        assertTrue("The emulator must expose at least one real installed widget provider without a configuration activity", provider != null)
+        val selectedProvider = provider ?: error("No real installed widget provider available")
+        val widgetId = java.util.concurrent.atomic.AtomicInteger(-1)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var shellPermissionAdopted = false
+        try {
+            instrumentation.uiAutomation.adoptShellPermissionIdentity(android.Manifest.permission.BIND_APPWIDGET)
+            shellPermissionAdopted = true
+            composeRule.runOnUiThread { activity.launchWidgetPicker(0, 0) }
+            composeRule.waitUntil(5_000) { activity.availableWidgetProviders.isNotEmpty() }
+            val providerTag = "widget-provider-${selectedProvider.provider.flattenToString()}"
+            composeRule.onNodeWithTag("widget-picker-list").performScrollToNode(hasTestTag(providerTag))
+            composeRule.onNodeWithTag(providerTag).performClick()
+            composeRule.waitUntil(10_000) {
+                activity.hostedWidgetIds.any { manager.getAppWidgetInfo(it)?.provider == selectedProvider.provider }
+            }
+            val boundId = activity.hostedWidgetIds.first { manager.getAppWidgetInfo(it)?.provider == selectedProvider.provider }
+            widgetId.set(boundId)
+            assertEquals("Android must report the selected installed provider for the allocated ID", selectedProvider.provider,
+                manager.getAppWidgetInfo(boundId)?.provider)
+            assertTrue("NEXO must host the real provider in an AppWidgetHostView", activity.createWidgetHostView(boundId) != null)
+            assertEquals("New real widget is placed on the requested page", 0, activity.hostedWidgetPages[boundId])
+            assertTrue("Bound ID must be persisted in NEXO's widget store", prefs.getString("ids", "").orEmpty().split(",").contains(boundId.toString()))
+            instrumentation.uiAutomation.dropShellPermissionIdentity()
+            shellPermissionAdopted = false
+
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { widgetId.get() in composeRule.activity.hostedWidgetIds }
+            assertEquals("Android provider binding survives Activity recreation", selectedProvider.provider,
+                android.appwidget.AppWidgetManager.getInstance(composeRule.activity).getAppWidgetInfo(widgetId.get())?.provider)
+            assertTrue("The restored widget still renders through AppWidgetHostView",
+                composeRule.activity.createWidgetHostView(widgetId.get()) != null)
+            composeRule.activityRule.scenario.onActivity { restored -> restored.removeWidget(widgetId.get()) }
+            composeRule.waitUntil(5_000) { widgetId.get() !in composeRule.activity.hostedWidgetIds }
+            composeRule.activityRule.scenario.onActivity { restored ->
+                val info = android.appwidget.AppWidgetManager.getInstance(restored).getAppWidgetInfo(widgetId.get())
+                assertEquals("Removing the real widget must release the Android widget ID", null, info)
+            }
+        } finally {
+            if (shellPermissionAdopted) runCatching { instrumentation.uiAutomation.dropShellPermissionIdentity() }
+            if (widgetId.get() >= 0) runCatching {
+                composeRule.activityRule.scenario.onActivity { restored ->
+                    if (widgetId.get() in restored.hostedWidgetIds) restored.removeWidget(widgetId.get())
+                    else if (android.appwidget.AppWidgetManager.getInstance(restored).getAppWidgetInfo(widgetId.get()) != null) {
+                        android.appwidget.AppWidgetHost(restored, 0x4E45584F).deleteAppWidgetId(widgetId.get())
+                    }
+                }
+            }
+            val edit = prefs.edit()
+            if (originalIds == null) edit.remove("ids") else edit.putString("ids", originalIds)
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            edit.commit()
+            composeRule.activity.getSharedPreferences("nexo_home", 0).edit().putInt("current_page", originalCurrentPage).commit()
+            runCatching { composeRule.activityRule.scenario.recreate() }
+        }
+    }
+
+    @Test
     fun widgetPickerUsesNexoFullScreenLayoutWithSearchAndProviderPreview() {
         composeRule.runOnUiThread { composeRule.activity.launchWidgetPicker(0, 0) }
         composeRule.waitUntil(5_000) { composeRule.activity.availableWidgetProviders.isNotEmpty() }
@@ -494,7 +659,7 @@ class HomeNavigationTest {
         composeRule.onNodeWithText("Widgets").assertExists()
         composeRule.onNodeWithTag("widget-picker-search").assertExists()
         composeRule.onNodeWithTag("widget-app-filter-all").assertExists()
-        val providerTag = "widget-provider-${provider!!.provider.packageName}"
+        val providerTag = "widget-provider-${provider!!.provider.flattenToString()}"
         composeRule.onNodeWithTag("widget-picker-list").performScrollToNode(hasTestTag(providerTag))
         composeRule.onNodeWithTag(providerTag).assertExists()
         composeRule.onNodeWithTag("widget-picker-search").performTextInput("nexo-widget-search-no-match")

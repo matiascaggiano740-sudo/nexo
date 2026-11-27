@@ -22,7 +22,7 @@ class IconThemesTest {
         assertEquals(R.drawable.icon_liquid_maps, themedIconResource(IconTheme.LIQUID_GLASS, "com.google.android.apps.maps"))
         assertNull(themedIconResource(IconTheme.LIQUID_GLASS, "com.unknown.app"))
         assertNull(themedIconResource(IconTheme.LIQUID_GLASS, "com.twitter.android"))
-        assertNull(themedIconResource(IconTheme.LIQUID_GLASS, "com.twitter.android"))
+        assertEquals(R.drawable.icon_liquid_mail, themedIconResource(IconTheme.LIQUID_GLASS, "com.android.email"))
         assertNull(themedIconResource(IconTheme.ORIGINAL, "com.android.chrome"))
     }
 
