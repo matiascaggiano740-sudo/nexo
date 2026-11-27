@@ -34,6 +34,66 @@ class HomeNavigationTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
+    private fun snapshotPreferences(prefs: android.content.SharedPreferences): Map<String, Any?> = prefs.all.toMap()
+
+    private fun restorePreferences(prefs: android.content.SharedPreferences, snapshot: Map<String, Any?>) {
+        val editor = prefs.edit().clear()
+        snapshot.forEach { (key, value) ->
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+            }
+        }
+        editor.commit()
+    }
+
+    @Test
+    fun backupRoundTripIncludesIconScaleAndLegacyBackupKeepsCurrentScale() {
+        val home = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val visual = composeRule.activity.getSharedPreferences("nexo", 0)
+        val iconSettings = composeRule.activity.getSharedPreferences("nexo_icon_settings", 0)
+        val categories = composeRule.activity.getSharedPreferences("nexo_app_categories", 0)
+        val originalHome = snapshotPreferences(home)
+        val originalVisual = snapshotPreferences(visual)
+        val originalIcons = snapshotPreferences(iconSettings)
+        val originalCategories = snapshotPreferences(categories)
+        try {
+            home.edit().putFloat("home_icon_scale", 0.37f)
+                .putString("pages", "${List(8) { "-" }.joinToString("|")}|folder:BackedUp")
+                .putString("packages", "${List(8) { "-" }.joinToString("|")}|folder:BackedUp")
+                .putString("user_folders", "[{\"name\":\"BackedUp\",\"packages\":[\"com.example.saved\"]}]")
+                .putString("dock_packages", "one|two|three|four").commit()
+            val backup = LauncherBackup.export(composeRule.activity, composeRule.activity)
+            val backupRoot = LauncherBackup.parse(backup)
+            assertEquals("Backup stays at its existing format version", 1, backupRoot.getInt("version"))
+            assertEquals("Exported backup contains the selected home icon scale", 0.37, backupRoot.getJSONObject("settings").getDouble("homeIconScale"), 0.0001)
+
+            home.edit().putFloat("home_icon_scale", 0.91f).commit()
+            val restored = LauncherBackup.restore(composeRule.activity, backupRoot)
+            assertEquals("Restore result exposes the scale for immediate Compose refresh", 0.37f, restored.homeIconScale, 0.0001f)
+            assertEquals("Scale is persisted with restored Home settings", 0.37f, home.getFloat("home_icon_scale", -1f), 0.0001f)
+            assertTrue("Folder shortcut position is restored", home.getString("pages", "").orEmpty().contains("folder:BackedUp"))
+            assertTrue("Folder member metadata is restored", home.getString("user_folders", "").orEmpty().contains("com.example.saved"))
+
+            val legacy = LauncherBackup.parse(backup).apply { getJSONObject("settings").remove("homeIconScale") }
+            home.edit().putFloat("home_icon_scale", 0.62f).commit()
+            val legacyRestored = LauncherBackup.restore(composeRule.activity, legacy)
+            assertEquals("Older version-1 backups without icon scale preserve the current scale", 0.62f,
+                legacyRestored.homeIconScale, 0.0001f)
+            assertEquals(0.62f, home.getFloat("home_icon_scale", -1f), 0.0001f)
+        } finally {
+            restorePreferences(home, originalHome)
+            restorePreferences(visual, originalVisual)
+            restorePreferences(iconSettings, originalIcons)
+            restorePreferences(categories, originalCategories)
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
     @Test
     fun iconSizeSettingsPreviewAndPersistTheSelectedScale() {
         val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)

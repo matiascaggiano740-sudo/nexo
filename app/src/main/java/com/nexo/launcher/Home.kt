@@ -1221,6 +1221,7 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         dock = saved.dock.mapNotNull { pkg -> refreshed.find { it.pkg == pkg } }
                     }
                     userFolders = saved.folders
+                    homeIconScale = saved.homeIconScale
                     city = saved.city
                     quote = saved.quote
                     photoTick++

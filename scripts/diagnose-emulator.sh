@@ -154,6 +154,7 @@ monitor_test() {
 }
 
 methods=(
+  backupRoundTripIncludesIconScaleAndLegacyBackupKeepsCurrentScale
   iconSizeSettingsPreviewAndPersistTheSelectedScale
   drawerSearchFiltersAsYouTypeAndKeepsPartialRowsLeftAligned
   drawerSearchStaysUsableWithImeAndBackClosesKeyboardBeforeDrawer

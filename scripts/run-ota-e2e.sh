@@ -31,7 +31,7 @@ adb logcat -d -s NexoOtaE2E:I > "$ARTIFACTS/ota-flow-logcat.txt" 2>&1
 
 adb shell dumpsys activity activities > "$ARTIFACTS/installer-activity-before-confirm.txt"
 grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/installer-activity-before-confirm.txt" | tee "$ARTIFACTS/installer-top-activity.txt"
-grep -Eq 'com\.android\.packageinstaller|com\.google\.android\.packageinstaller|com\.android\.permissioncontroller' "$ARTIFACTS/installer-top-activity.txt"
+grep -Eq 'com\.android\.packageinstaller|com\.google\.android\.packageinstaller|com\.android\.permissioncontroller|com\.google\.android\.permissioncontroller' "$ARTIFACTS/installer-top-activity.txt"
 
 # Confirm only inside the disposable CI emulator, through Android's own installer UI.
 installed=0

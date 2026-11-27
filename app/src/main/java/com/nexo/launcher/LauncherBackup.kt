@@ -20,7 +20,8 @@ object LauncherBackup {
         val folders: List<Pair<String, List<String>>>,
         val widgetSpecs: JSONArray,
         val city: String,
-        val quote: String
+        val quote: String,
+        val homeIconScale: Float
     )
 
     fun export(context: Context, activity: MainActivity?): String {
@@ -56,6 +57,7 @@ object LauncherBackup {
                 .put("city", visual.getString("city", ""))
                 .put("quote", visual.getString("quote", DEFAULT_QUOTE))
                 .put("wallpaperDim", visual.getFloat("wallpaper_dim", 0.04f))
+                .put("homeIconScale", home.getFloat("home_icon_scale", DEFAULT_HOME_ICON_SCALE))
                 .put("photoJpegBase64", photoData ?: JSONObject.NULL)
                 .put("manualCategories", catJson)
                 .put("iconTheme", savedIconTheme(context).key))
@@ -124,13 +126,21 @@ object LauncherBackup {
         val foldersRaw = JSONArray().also { arr -> folders.forEach { (name, pkgs) ->
             arr.put(JSONObject().put("name", name).put("packages", JSONArray(pkgs)))
         } }.toString()
-        context.getSharedPreferences("nexo_home", Context.MODE_PRIVATE).edit()
+
+        val settings = root.optJSONObject("settings") ?: JSONObject()
+        val homePreferences = context.getSharedPreferences("nexo_home", Context.MODE_PRIVATE)
+        val restoredIconScale = (if (settings.has("homeIconScale")) {
+            settings.optDouble("homeIconScale", DEFAULT_HOME_ICON_SCALE.toDouble()).toFloat()
+        } else {
+            homePreferences.getFloat("home_icon_scale", DEFAULT_HOME_ICON_SCALE)
+        }).coerceIn(0f, 1f)
+        homePreferences.edit()
             .putString("pages", pagesRaw)
             .putString("packages", pages.firstOrNull().orEmpty().joinToString("|"))
             .putString("dock_packages", dock.joinToString("|"))
-            .putString("user_folders", foldersRaw).apply()
+            .putString("user_folders", foldersRaw)
+            .putFloat("home_icon_scale", restoredIconScale).apply()
 
-        val settings = root.optJSONObject("settings") ?: JSONObject()
         if (settings.has("iconTheme")) {
             val theme = IconTheme.fromKey(settings.optString("iconTheme", "original"))
             context.getSharedPreferences("nexo_icon_settings", Context.MODE_PRIVATE).edit().putString("theme", theme.key).apply()
@@ -149,7 +159,7 @@ object LauncherBackup {
         val categoryJson = settings.optJSONObject("manualCategories") ?: JSONObject()
         categoryJson.keys().forEach { key -> categoryJson.optString(key).takeIf(String::isNotBlank)?.let { catEditor.putString(key, it) } }
         catEditor.apply()
-        return Restored(pages, dock, folders, root.optJSONArray("widgets") ?: JSONArray(), city, quote)
+        return Restored(pages, dock, folders, root.optJSONArray("widgets") ?: JSONArray(), city, quote, restoredIconScale)
     }
 
     private fun portablePhoto(context: Context, uriText: String?): String? {

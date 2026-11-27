@@ -8,6 +8,17 @@ class HomeGridTest {
     private fun visibleTokens(pages: List<List<String>>) = pages.flatten().filter { it != "-" }
 
     @Test
+    fun launcherGridRetainsTheApprovedFourBySevenGeometry() {
+        assertEquals(4, HomeGrid.COLUMN_COUNT)
+        assertEquals(7, HomeGrid.ROW_COUNT)
+        assertEquals(28, HomeGrid.CELL_COUNT)
+        assertEquals(HomeGrid.COLUMN_COUNT * HomeGrid.ROW_COUNT, HomeGrid.CELL_COUNT)
+        val oneEmptyPage = HomeGrid.normalize(listOf(emptyList()), emptyMap(), emptyList())
+        assertEquals(1, oneEmptyPage.size)
+        assertEquals(List(28) { "-" }, oneEmptyPage.single())
+    }
+
+    @Test
     fun removesDuplicateAppsAlreadyPresentOnMultipleLegacyPages() {
         val defaults = listOf("whatsapp", "spotify", "instagram", "maps", "gallery", "chrome")
         val pages = listOf(defaults + List(22) { "-" }, defaults.take(4) + List(24) { "-" })

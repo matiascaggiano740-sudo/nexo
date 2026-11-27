@@ -75,16 +75,15 @@ class OtaEndToEndTest {
         Log.i(TAG, "E2E: actual UI displayed DownloadManager progress for valid candidate")
         composeRule.waitUntil(120_000) {
             val top = topActivityDump()
-            top.contains("com.android.packageinstaller") ||
-                top.contains("com.google.android.packageinstaller") ||
-                top.contains("com.android.permissioncontroller")
+            hasAndroidInstallerOnTop(top)
         }
         val top = topActivityDump()
-        Log.i(TAG, "E2E: verified APK launched Android package installer; top activity: ${top.lineSequence().firstOrNull { it.contains("mResumedActivity") || it.contains("topResumedActivity") }}")
-        assertTrue("Expected Android system package installer to be foreground after hash, package, version and certificate validation", 
-            top.contains("com.android.packageinstaller") ||
-                top.contains("com.google.android.packageinstaller") ||
-                top.contains("com.android.permissioncontroller"))
+        val resumedLine = top.lineSequence().firstOrNull { it.contains("mResumedActivity") || it.contains("topResumedActivity") }
+        Log.i(TAG, "E2E: verified APK launched Android package installer; top activity: $resumedLine")
+        assertTrue(
+            "Expected Android system package installer to be foreground after hash, package, version and certificate validation. Resumed activity: $resumedLine",
+            hasAndroidInstallerOnTop(top)
+        )
         Log.i(TAG, "E2E: installer handoff completed; CI driver will accept Android confirmation and verify installed data/version")
     }
 
@@ -108,6 +107,17 @@ class OtaEndToEndTest {
     private fun topActivityDump(): String {
         val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys activity activities")
         return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+    }
+
+    private fun hasAndroidInstallerOnTop(dump: String): Boolean {
+        val resumed = dump.lineSequence().firstOrNull { it.contains("mResumedActivity") || it.contains("topResumedActivity") }
+            ?: return false
+        return listOf(
+            "com.android.packageinstaller",
+            "com.google.android.packageinstaller",
+            "com.android.permissioncontroller",
+            "com.google.android.permissioncontroller"
+        ).any(resumed::contains)
     }
 
     companion object {
