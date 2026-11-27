@@ -455,6 +455,55 @@ class HomeNavigationTest {
     }
 
     @Test
+    fun fullDestinationPageRejectsFolderMoveWithoutChangingEitherPage() {
+        val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
+        val originalPages = prefs.getString("pages", null)
+        val originalPackages = prefs.getString("packages", null)
+        val originalFolders = prefs.getString("user_folders", null)
+        val originalPage = prefs.getInt("current_page", 0)
+        val firstPage = MutableList(28) { "-" }.apply { this[8] = "folder:FullPageAudit" }
+        val fullSecondPage = MutableList(28) { "-" }.apply {
+            for (slot in 8 until 28) this[slot] = "occupied.$slot"
+        }
+        val originalSecondPage = fullSecondPage.toList()
+        prefs.edit()
+            .putString("user_folders", "[{\"name\":\"FullPageAudit\",\"packages\":[\"installed.member\"]}]")
+            .putString("pages", listOf(firstPage, fullSecondPage).joinToString("~") { it.joinToString("|") })
+            .putString("packages", firstPage.joinToString("|"))
+            .putInt("current_page", 0).commit()
+        try {
+            composeRule.activityRule.scenario.recreate()
+            composeRule.waitUntil(10_000) { composeRule.onAllNodesWithTag("home-folder-FullPageAudit").fetchSemanticsNodes().isNotEmpty() }
+            val folder = composeRule.onNodeWithTag("home-folder-FullPageAudit")
+            val bounds = folder.fetchSemanticsNode().boundsInRoot
+            val pageTarget = composeRule.onNodeWithTag("home-page-indicator-1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+            folder.performTouchInput {
+                val origin = bounds.center - bounds.topLeft
+                val target = pageTarget - bounds.topLeft
+                down(origin)
+                advanceEventTime(700)
+                for (step in 1..12) moveTo(origin + (target - origin) * (step / 12f), 35)
+                up()
+            }
+            composeRule.waitForIdle()
+            val after = prefs.getString("pages", "").orEmpty().split("~").map { it.split("|") }
+            assertEquals("A full target page must reject the move without losing the source folder", "folder:FullPageAudit", after[0][8])
+            assertEquals("A full target page must remain unchanged", originalSecondPage, after[1])
+            assertEquals("Folder token must not be duplicated on failed move", 1,
+                after.sumOf { page -> page.count { it == "folder:FullPageAudit" } })
+            assertEquals("Folder members must remain unchanged on rejected move", "[{\"name\":\"FullPageAudit\",\"packages\":[\"installed.member\"]}]",
+                prefs.getString("user_folders", ""))
+        } finally {
+            val edit = prefs.edit()
+            if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
+            if (originalPackages == null) edit.remove("packages") else edit.putString("packages", originalPackages)
+            if (originalFolders == null) edit.remove("user_folders") else edit.putString("user_folders", originalFolders)
+            edit.putInt("current_page", originalPage).commit()
+            composeRule.activityRule.scenario.recreate()
+        }
+    }
+
+    @Test
     fun folderCreatedByDraggingAppsCanBeMovedAndPersistsAsOneGridItem() {
         val prefs = composeRule.activity.getSharedPreferences("nexo_home", 0)
         val originalPages = prefs.getString("pages", null)
