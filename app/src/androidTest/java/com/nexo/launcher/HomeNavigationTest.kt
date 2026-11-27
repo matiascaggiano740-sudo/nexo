@@ -13,6 +13,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipeLeft
@@ -238,7 +240,9 @@ class HomeNavigationTest {
         composeRule.onNodeWithText("Widgets").assertExists()
         composeRule.onNodeWithTag("widget-picker-search").assertExists()
         composeRule.onNodeWithTag("widget-app-filter-all").assertExists()
-        composeRule.onNodeWithTag("widget-provider-${provider!!.provider.packageName}").assertExists()
+        val providerTag = "widget-provider-${provider!!.provider.packageName}"
+        composeRule.onNodeWithTag("widget-picker-list").performScrollToNode(hasTestTag(providerTag))
+        composeRule.onNodeWithTag(providerTag).assertExists()
         composeRule.onNodeWithTag("widget-picker-search").performTextInput("nexo-widget-search-no-match")
         composeRule.onNodeWithText("No encontramos ese widget").assertExists()
         composeRule.onNodeWithTag("widget-picker-close").performClick()
