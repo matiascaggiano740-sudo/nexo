@@ -133,6 +133,15 @@ jobs:
             echo 'behavior=Android in-place update; do not uninstall'
           } | tee recovery-package/metadata.txt
 
+      - name: Stage and verify signed 1.0.2 baseline APK for emulator step
+        run: |
+          set -eu
+          mkdir -p recovery-source/recovery-input
+          cp recovery-input/app-release.apk recovery-source/recovery-input/app-release.apk
+          ls -l recovery-source/recovery-input/app-release.apk
+          test -s recovery-source/recovery-input/app-release.apk
+          sha256sum recovery-source/recovery-input/app-release.apk
+
       - name: Enable KVM access for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -158,7 +167,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -eu
-            old_apk="$GITHUB_WORKSPACE/recovery-input/app-release.apk"
+            old_apk="$GITHUB_WORKSPACE/recovery-source/recovery-input/app-release.apk"
             new_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
             test_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)
             test -n "$old_apk" && test -s "$old_apk" || { echo 'Missing signed 1.0.2 baseline APK under recovery-input.' >&2; find "$GITHUB_WORKSPACE/recovery-input" -type f -print >&2; exit 1; }
