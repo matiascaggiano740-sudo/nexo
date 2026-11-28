@@ -133,14 +133,44 @@ jobs:
             echo 'behavior=Android in-place update; do not uninstall'
           } | tee recovery-package/metadata.txt
 
-      - name: Stage and verify signed 1.0.2 baseline APK for emulator step
+      - name: Stage signed baseline and create atomic recovery test script
         run: |
           set -eu
-          mkdir -p recovery-source/app/build/outputs/recovery-input
-          cp recovery-input/app-release.apk recovery-source/app/build/outputs/recovery-input/app-release.apk
-          ls -l recovery-source/app/build/outputs/recovery-input/app-release.apk
-          test -s recovery-source/app/build/outputs/recovery-input/app-release.apk
-          sha256sum recovery-source/app/build/outputs/recovery-input/app-release.apk
+          mkdir -p recovery-source/recovery-input
+          cp recovery-input/app-release.apk recovery-source/recovery-input/app-release.apk
+          test -s recovery-source/recovery-input/app-release.apk
+          sha256sum recovery-source/recovery-input/app-release.apk
+          cat > recovery-source/test-recovery-upgrade.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/recovery-source"
+          old_apk="$GITHUB_WORKSPACE/recovery-input/app-release.apk"
+          new_apk=$(find "$root/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
+          test_apk=$(find "$root/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)
+          test -s "$old_apk" && test -s "$new_apk" && test -s "$test_apk"
+          signed_test_apk="$(dirname "$test_apk")/app-recovery-signed-androidTest.apk"
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          old_code=$("$aapt" dump badging "$old_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
+          new_code=$("$aapt" dump badging "$new_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
+          test "$old_code" = 1003 && test "$new_code" = 1004
+          old_cert=$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          new_cert=$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test "$old_cert" = "$EXPECTED_CERT_SHA256" && test "$new_cert" = "$EXPECTED_CERT_SHA256"
+          adb install "$old_apk"
+          "$apksigner" sign --ks "$root/nexo-release-final.p12" --ks-type PKCS12 --ks-pass env:NEXO_STORE_PASSWORD --key-pass env:NEXO_KEY_PASSWORD --ks-key-alias nexo --out "$signed_test_apk" "$test_apk"
+          test_cert=$("$apksigner" verify --print-certs "$signed_test_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test "$test_cert" = "$EXPECTED_CERT_SHA256"
+          adb install "$signed_test_apk"
+          adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner | tee "$root/seed-test.log"
+          grep -F 'OK (1 test)' "$root/seed-test.log"
+          adb install -r "$new_apk"
+          adb shell am instrument -w -e expectedVersionCode 1004 -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner | tee "$root/recovery-test.log"
+          grep -F 'OK (1 test)' "$root/recovery-test.log"
+          echo 'Recovery update preserved data and moved from code 1003 to 1004 without uninstall.'
+          SCRIPT
+          chmod +x recovery-source/test-recovery-upgrade.sh
+          bash -n recovery-source/test-recovery-upgrade.sh
 
       - name: Enable KVM access for Android emulator
         run: |
@@ -165,36 +195,7 @@ jobs:
           ram-size: 3072M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -eu
-            old_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/recovery-input/app-release.apk"
-            printf 'Workspace=%s; recovery baseline=%s\n' "$GITHUB_WORKSPACE" "$old_apk"
-            new_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
-            test_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)
-            test -n "$old_apk" && test -s "$old_apk" || { echo 'Missing signed 1.0.2 baseline APK under recovery-input.' >&2; find "$GITHUB_WORKSPACE/recovery-input" -type f -print >&2; exit 1; }
-            test -n "$new_apk" && test -s "$new_apk" || { echo 'Missing recovery Release APK.' >&2; find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk" -type f -print >&2; exit 1; }
-            test -n "$test_apk" && test -s "$test_apk" || { echo 'Missing instrumented test APK.' >&2; find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk" -type f -print >&2; exit 1; }
-            signed_test_apk="$(dirname "$test_apk")/app-recovery-signed-androidTest.apk"
-            apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
-            aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
-            printf 'Baseline APK: %s\nRecovery APK: %s\nInstrumentation APK: %s\n' "$old_apk" "$new_apk" "$test_apk"
-            old_code=$("$aapt" dump badging "$old_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
-            new_code=$("$aapt" dump badging "$new_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
-            test "$old_code" = 1003 && test "$new_code" = 1004
-            old_cert=$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
-            new_cert=$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
-            test "$old_cert" = "$EXPECTED_CERT_SHA256" && test "$new_cert" = "$EXPECTED_CERT_SHA256"
-            adb install "$old_apk"
-            "$apksigner" sign --ks "$GITHUB_WORKSPACE/recovery-source/nexo-release-final.p12" --ks-type PKCS12 --ks-pass env:NEXO_STORE_PASSWORD --key-pass env:NEXO_KEY_PASSWORD --ks-key-alias nexo --out "$signed_test_apk" "$test_apk"
-            test_cert=$("$apksigner" verify --print-certs "$signed_test_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
-            test "$test_cert" = "$EXPECTED_CERT_SHA256"
-            adb install "$signed_test_apk"
-            adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner | tee "$GITHUB_WORKSPACE/recovery-source/seed-test.log"
-            grep -F 'OK (1 test)' "$GITHUB_WORKSPACE/recovery-source/seed-test.log"
-            adb install -r "$new_apk"
-            adb shell am instrument -w -e expectedVersionCode 1004 -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner | tee "$GITHUB_WORKSPACE/recovery-source/recovery-test.log"
-            grep -F 'OK (1 test)' "$GITHUB_WORKSPACE/recovery-source/recovery-test.log"
-            echo 'Recovery installed in-place over signed 1.0.2 and preserved user preferences.'
+          script: bash "$GITHUB_WORKSPACE/recovery-source/test-recovery-upgrade.sh"
         
 
       - name: Upload the private recovery package and verification metadata (not a Release)
