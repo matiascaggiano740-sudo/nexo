@@ -158,13 +158,16 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -eu
-            old_apk="$GITHUB_WORKSPACE/recovery-input/app-release.apk"
-            new_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release/app-release.apk"
-            test_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-            signed_test_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest/debug/app-recovery-signed-androidTest.apk"
+            old_apk=$(find "$GITHUB_WORKSPACE/recovery-input" -type f -name '*.apk' -print -quit)
+            new_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
+            test_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)
+            test -n "$old_apk" && test -s "$old_apk" || { echo 'Missing signed 1.0.2 baseline APK under recovery-input.' >&2; find "$GITHUB_WORKSPACE/recovery-input" -type f -print >&2; exit 1; }
+            test -n "$new_apk" && test -s "$new_apk" || { echo 'Missing recovery Release APK.' >&2; find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk" -type f -print >&2; exit 1; }
+            test -n "$test_apk" && test -s "$test_apk" || { echo 'Missing instrumented test APK.' >&2; find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk" -type f -print >&2; exit 1; }
+            signed_test_apk="$(dirname "$test_apk")/app-recovery-signed-androidTest.apk"
             apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
             aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
-            test -s "$old_apk" && test -s "$new_apk" && test -s "$test_apk"
+            printf 'Baseline APK: %s\nRecovery APK: %s\nInstrumentation APK: %s\n' "$old_apk" "$new_apk" "$test_apk"
             old_code=$("$aapt" dump badging "$old_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
             new_code=$("$aapt" dump badging "$new_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
             test "$old_code" = 1003 && test "$new_code" = 1004
