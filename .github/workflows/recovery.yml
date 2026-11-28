@@ -79,7 +79,7 @@ jobs:
         env:
           NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
-        run: gradle testDebugUnitTest testReleaseUnitTest assembleDebug compileDebugAndroidTestKotlin --no-daemon
+        run: gradle testDebugUnitTest testReleaseUnitTest assembleDebug assembleDebugAndroidTest --no-daemon
 
       - name: Verify full Android 35 regression evidence for the exact recovery source commit
         working-directory: recovery-source
