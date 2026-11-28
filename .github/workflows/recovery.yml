@@ -136,11 +136,11 @@ jobs:
       - name: Stage and verify signed 1.0.2 baseline APK for emulator step
         run: |
           set -eu
-          mkdir -p recovery-source/recovery-input
-          cp recovery-input/app-release.apk recovery-source/recovery-input/app-release.apk
-          ls -l recovery-source/recovery-input/app-release.apk
-          test -s recovery-source/recovery-input/app-release.apk
-          sha256sum recovery-source/recovery-input/app-release.apk
+          mkdir -p recovery-source/app/build/outputs/recovery-input
+          cp recovery-input/app-release.apk recovery-source/app/build/outputs/recovery-input/app-release.apk
+          ls -l recovery-source/app/build/outputs/recovery-input/app-release.apk
+          test -s recovery-source/app/build/outputs/recovery-input/app-release.apk
+          sha256sum recovery-source/app/build/outputs/recovery-input/app-release.apk
 
       - name: Enable KVM access for Android emulator
         run: |
@@ -167,7 +167,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -eu
-            old_apk=$(find "$GITHUB_WORKSPACE" -type f -path '*/recovery-input/app-release.apk' -print -quit)
+            old_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/recovery-input/app-release.apk"
             printf 'Workspace=%s; recovery baseline=%s\n' "$GITHUB_WORKSPACE" "$old_apk"
             new_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
             test_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)
