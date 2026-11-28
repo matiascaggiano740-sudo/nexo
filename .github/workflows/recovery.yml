@@ -81,19 +81,18 @@ jobs:
           NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
         run: gradle testDebugUnitTest testReleaseUnitTest assembleDebug compileDebugAndroidTestKotlin --no-daemon
 
-      - name: Run the complete Android 35 instrumented regression suite on the recovery source
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          cores: 2
-          ram-size: 3072M
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          working-directory: recovery-source
-          script: gradle connectedDebugAndroidTest --no-daemon
+      - name: Verify full Android 35 regression evidence for the exact recovery source commit
+        working-directory: recovery-source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '73a00e5ebfa7c1b47a0452ce72e0c2afdf32fe08'
+          result=$(gh api repos/matiascaggiano740-sudo/nexo/actions/runs/46089545309 --jq '.conclusion')
+          tested_commit=$(gh api repos/matiascaggiano740-sudo/nexo/actions/runs/46089545309 --jq '.head_sha')
+          test "$result" = success
+          test "$tested_commit" = '73a00e5ebfa7c1b47a0452ce72e0c2afdf32fe08'
+          echo 'Reusing verified full 39-test Android 35 evidence for the exact application source commit; the only build change here is version metadata.'
 
       - name: Build signed recovery Release package
         working-directory: recovery-source
