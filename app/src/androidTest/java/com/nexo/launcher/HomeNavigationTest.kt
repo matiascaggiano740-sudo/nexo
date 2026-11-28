@@ -157,14 +157,6 @@ class HomeNavigationTest {
         composeRule.onNodeWithTag("open-app-drawer").performClick()
         composeRule.onNodeWithTag("drawer-search-field").performClick()
         val decor = composeRule.activity.window.decorView
-        composeRule.runOnUiThread {
-            if (android.os.Build.VERSION.SDK_INT >= 30) {
-                decor.windowInsetsController?.show(android.view.WindowInsets.Type.ime())
-            } else {
-                composeRule.activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-                    .showSoftInput(decor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-            }
-        }
         composeRule.waitUntil(10_000) {
             android.os.Build.VERSION.SDK_INT < 30 || decor.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true
         }
