@@ -167,7 +167,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -eu
-            old_apk="$GITHUB_WORKSPACE/recovery-source/recovery-input/app-release.apk"
+            old_apk=$(find "$GITHUB_WORKSPACE" -type f -path '*/recovery-input/app-release.apk' -print -quit)
+            printf 'Workspace=%s; recovery baseline=%s\n' "$GITHUB_WORKSPACE" "$old_apk"
             new_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
             test_apk=$(find "$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)
             test -n "$old_apk" && test -s "$old_apk" || { echo 'Missing signed 1.0.2 baseline APK under recovery-input.' >&2; find "$GITHUB_WORKSPACE/recovery-input" -type f -print >&2; exit 1; }
