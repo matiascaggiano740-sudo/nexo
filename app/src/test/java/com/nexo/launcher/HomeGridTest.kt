@@ -8,6 +8,23 @@ class HomeGridTest {
     private fun visibleTokens(pages: List<List<String>>) = pages.flatten().filter { it != "-" }
 
     @Test
+    fun noActiveDragNeverDimsAppsFoldersOrEmptyCells() {
+        assertTrue(!isHomeItemDragged("com.example.app", null, null, null))
+        assertTrue(!isHomeItemDragged(null, "Social", null, null))
+        assertTrue(!isHomeItemDragged(null, null, null, null))
+    }
+
+    @Test
+    fun onlyTheMatchingAppOrFolderIsMarkedAsDragged() {
+        assertTrue(isHomeItemDragged("com.example.app", null, "com.example.app", null))
+        assertTrue(isHomeItemDragged(null, "Social", null, "Social"))
+        assertTrue(!isHomeItemDragged("com.example.app", null, null, "Social"))
+        assertTrue(!isHomeItemDragged(null, "Social", "com.example.app", null))
+        assertTrue(!isHomeItemDragged("com.example.other", null, "com.example.app", null))
+        assertTrue(!isHomeItemDragged(null, "Games", null, "Social"))
+    }
+
+    @Test
     fun launcherGridRetainsTheApprovedFourBySevenGeometry() {
         assertEquals(4, HomeGrid.COLUMN_COUNT)
         assertEquals(7, HomeGrid.ROW_COUNT)

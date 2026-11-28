@@ -858,7 +858,12 @@ var lastPackageRefresh by remember { mutableStateOf(0) }
                         onFolderDragPreview = { name, folderItems, position ->
                             folderDragPreview = if (position == null) null else Triple(name, folderItems, position)
                         },
-                        isDragged = dragPreview?.first?.pkg == app?.pkg || folderDragPreview?.first == folderName,
+                        isDragged = isHomeItemDragged(
+                            appPackage = app?.pkg,
+                            folderName = folderName,
+                            draggedAppPackage = dragPreview?.first?.pkg,
+                            draggedFolderName = folderDragPreview?.first
+                        ),
                         onDrop = { payload, targetIndex ->
                             val fromDock = payload.startsWith("dock:")
                             val draggedPkg = payload.removePrefix("home:").removePrefix("dock:")

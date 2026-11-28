@@ -14,6 +14,16 @@ internal data class HomeIconSizing(
     val showLabel: Boolean
 )
 
+/** Only dim a home item when a real app or folder drag is active and matches it. */
+internal fun isHomeItemDragged(
+    appPackage: String?,
+    folderName: String?,
+    draggedAppPackage: String?,
+    draggedFolderName: String?
+): Boolean =
+    (appPackage != null && draggedAppPackage == appPackage) ||
+        (folderName != null && draggedFolderName == folderName)
+
 /** Scale home icons and labels together, while fitting both inside the measured grid cell. */
 internal fun homeIconSizing(cellHeightDp: Float, scale: Float = DEFAULT_HOME_ICON_SCALE): HomeIconSizing {
     val height = cellHeightDp.coerceAtLeast(0f)
