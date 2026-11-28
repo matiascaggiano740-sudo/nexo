@@ -133,6 +133,14 @@ jobs:
             echo 'behavior=Android in-place update; do not uninstall'
           } | tee recovery-package/metadata.txt
 
+      - name: Enable KVM access for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+          test -e /dev/kvm
+
       - name: Test in-place recovery from candidate 1.0.2 and preserve user preferences
         uses: reactivecircus/android-emulator-runner@v2
         env:
