@@ -1,0 +1,186 @@
+name: Build NEXO in-place recovery package
+
+on:
+  push:
+    branches:
+      - zapia/launcher-refresh
+    paths:
+      - .github/workflows/recovery.yml
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  recovery:
+    name: Build stable-code recovery APK and verify in-place data-preserving update
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout workflow revision
+        uses: actions/checkout@v6
+
+      - name: Checkout the exact public 1.0.1 application source
+        uses: actions/checkout@v6
+        with:
+          ref: 73a00e5ebfa7c1b47a0452ce72e0c2afdf32fe08
+          path: recovery-source
+          fetch-depth: 1
+
+      - name: Download the exact signed 1.0.2 candidate to use as recovery test baseline
+        uses: actions/download-artifact@v6
+        with:
+          name: NEXO-Release-candidate-e3c1e3924b68202719bca8997946c2a2404b5425
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 46107872735
+          path: recovery-input
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 8.14.4
+
+      - name: Validate source, candidate baseline and set recovery version
+        working-directory: recovery-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '73a00e5ebfa7c1b47a0452ce72e0c2afdf32fe08'
+          grep -Fx 'VERSION_CODE=1002' version.properties
+          grep -Fx 'VERSION_NAME=1.0.1' version.properties
+          test -s ../recovery-input/app-release.apk
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          badging=$("$aapt" dump badging ../recovery-input/app-release.apk | sed -n '1p')
+          echo "$badging" | grep -F "package: name='com.nexo.launcher' versionCode='1003' versionName='1.0.2'"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('version.properties')
+          text = path.read_text()
+          text = text.replace('VERSION_CODE=1002', 'VERSION_CODE=1004', 1)
+          text = text.replace('VERSION_NAME=1.0.1', 'VERSION_NAME=1.0.3', 1)
+          path.write_text(text)
+          assert 'VERSION_CODE=1004' in text and 'VERSION_NAME=1.0.3' in text
+          PY
+          printf '%s\n' 'Recovery source is public 1.0.1 application code; recovery package will be versionName 1.0.3/versionCode 1004.'
+
+      - name: Prepare the permanent signing key without exposing it
+        working-directory: recovery-source
+        env:
+          NEXO_KEYSTORE_BASE64: ${{ secrets.NEXO_KEYSTORE_BASE64 }}
+        run: printf '%s' "$NEXO_KEYSTORE_BASE64" | base64 --decode > nexo-release-final.p12
+
+      - name: Run unit tests and compile debug and instrumentation APKs
+        working-directory: recovery-source
+        env:
+          NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+        run: gradle testDebugUnitTest testReleaseUnitTest assembleDebug compileDebugAndroidTestKotlin --no-daemon
+
+      - name: Run the complete Android 35 instrumented regression suite on the recovery source
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          working-directory: recovery-source
+          script: gradle connectedDebugAndroidTest --no-daemon
+
+      - name: Build signed recovery Release package
+        working-directory: recovery-source
+        env:
+          NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
+
+      - name: Verify package identity, higher version and stable signing certificate
+        working-directory: recovery-source
+        env:
+          EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          badging=$("$aapt" dump badging "$apk" | sed -n '1p')
+          echo "$badging" | grep -F "package: name='com.nexo.launcher' versionCode='1004' versionName='1.0.3'"
+          "$apksigner" verify --verbose "$apk"
+          "$apksigner" verify --print-certs "$apk" | tee recovery-signing-details.txt
+          signer=$(sed -n 's/.*certificate SHA-256 digest: //p' recovery-signing-details.txt | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test "$signer" = "$EXPECTED_CERT_SHA256"
+          mkdir -p recovery-package
+          cp "$apk" recovery-package/NEXO-recovery-1.0.3.apk
+          cp recovery-signing-details.txt recovery-package/signing-details.txt
+          printf '%s\n' "$badging" > recovery-package/aapt-badging.txt
+          {
+            echo 'purpose=In-place recovery to the public NEXO 1.0.1 application code; not published'
+            echo 'source_commit=73a00e5ebfa7c1b47a0452ce72e0c2afdf32fe08'
+            echo 'applicationId=com.nexo.launcher'
+            echo 'versionCode=1004'
+            echo 'versionName=1.0.3'
+            echo "apk_sha256=$(sha256sum recovery-package/NEXO-recovery-1.0.3.apk | awk '{print toupper($1)}')"
+            echo "signing_certificate_sha256=$signer"
+            echo 'recovery_from=versionCode 1003 or lower'
+            echo 'behavior=Android in-place update; do not uninstall'
+          } | tee recovery-package/metadata.txt
+
+      - name: Test in-place recovery from candidate 1.0.2 and preserve user preferences
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          EXPECTED_CERT_SHA256: '058532948C51385E15884CB14DC6A916DEB3BC8D42D170A1C70336467D99A463'
+          NEXO_STORE_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+          NEXO_KEY_PASSWORD: ${{ secrets.NEXO_KEY_PASSWORD }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            old_apk="$GITHUB_WORKSPACE/recovery-input/app-release.apk"
+            new_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/release/app-release.apk"
+            test_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+            signed_test_apk="$GITHUB_WORKSPACE/recovery-source/app/build/outputs/apk/androidTest/debug/app-recovery-signed-androidTest.apk"
+            apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+            aapt=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+            test -s "$old_apk" && test -s "$new_apk" && test -s "$test_apk"
+            old_code=$("$aapt" dump badging "$old_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
+            new_code=$("$aapt" dump badging "$new_apk" | sed -n "1s/.*versionCode='\\([0-9][0-9]*\\)'.*/\\1/p")
+            test "$old_code" = 1003 && test "$new_code" = 1004
+            old_cert=$("$apksigner" verify --print-certs "$old_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            new_cert=$("$apksigner" verify --print-certs "$new_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            test "$old_cert" = "$EXPECTED_CERT_SHA256" && test "$new_cert" = "$EXPECTED_CERT_SHA256"
+            adb install "$old_apk"
+            "$apksigner" sign --ks "$GITHUB_WORKSPACE/recovery-source/nexo-release-final.p12" --ks-type PKCS12 --ks-pass env:NEXO_STORE_PASSWORD --key-pass env:NEXO_KEY_PASSWORD --ks-key-alias nexo --out "$signed_test_apk" "$test_apk"
+            test_cert=$("$apksigner" verify --print-certs "$signed_test_apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+            test "$test_cert" = "$EXPECTED_CERT_SHA256"
+            adb install "$signed_test_apk"
+            adb shell am instrument -w -e class com.nexo.launcher.UpgradePersistenceTest#seedUserDataBeforeUpgrade com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner | tee "$GITHUB_WORKSPACE/recovery-source/seed-test.log"
+            grep -F 'OK (1 test)' "$GITHUB_WORKSPACE/recovery-source/seed-test.log"
+            adb install -r "$new_apk"
+            adb shell am instrument -w -e expectedVersionCode 1004 -e class com.nexo.launcher.UpgradePersistenceTest#updatedPackageKeepsUserDataAndHasNewVersion com.nexo.launcher.test/androidx.test.runner.AndroidJUnitRunner | tee "$GITHUB_WORKSPACE/recovery-source/recovery-test.log"
+            grep -F 'OK (1 test)' "$GITHUB_WORKSPACE/recovery-source/recovery-test.log"
+            echo 'Recovery installed in-place over signed 1.0.2 and preserved user preferences.'
+        
+
+      - name: Upload the private recovery package and verification metadata (not a Release)
+        uses: actions/upload-artifact@v6
+        with:
+          name: NEXO-in-place-recovery-1.0.3-from-1.0.2
+          path: recovery-source/recovery-package/
+          if-no-files-found: error
+          retention-days: 30
