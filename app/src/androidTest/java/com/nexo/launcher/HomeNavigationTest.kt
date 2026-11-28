@@ -432,8 +432,9 @@ class HomeNavigationTest {
                 composeRule.onAllNodesWithTag("home-folder-Audit").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithTag("home-folder-Audit").performClick()
-            composeRule.onNodeWithText(firstLabel).assertExists()
-            composeRule.onNodeWithText(secondLabel).assertExists()
+            composeRule.onNodeWithTag("folder-panel-title-Audit").assertExists()
+            val restoredMembers = prefs.getString("user_folders", "").orEmpty()
+            assertTrue("Folder members must remain persisted after Activity recreation", restoredMembers.contains(firstPackage) && restoredMembers.contains(secondPackage))
             composeRule.activity.onBackPressedDispatcher.onBackPressed()
             composeRule.waitForIdle()
 
@@ -449,8 +450,10 @@ class HomeNavigationTest {
                 composeRule.onAllNodesWithTag("home-folder-Audit").fetchSemanticsNodes().isNotEmpty()
             }
             composeRule.onNodeWithTag("home-folder-Audit").performClick()
-            composeRule.onNodeWithText(firstLabel).assertExists()
-            composeRule.onNodeWithText(secondLabel).assertExists()
+            composeRule.onNodeWithTag("folder-panel-title-Audit").assertExists()
+            val restoredMembersAfterSecondMove = prefs.getString("user_folders", "").orEmpty()
+            assertTrue("Folder members must remain persisted after moving back and recreating Activity",
+                restoredMembersAfterSecondMove.contains(firstPackage) && restoredMembersAfterSecondMove.contains(secondPackage))
         } finally {
             val edit = prefs.edit()
             if (originalPages == null) edit.remove("pages") else edit.putString("pages", originalPages)
