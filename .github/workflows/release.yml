@@ -34,8 +34,8 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$version_name"
           git fetch origin zapia/launcher-refresh --depth=1
           git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD || { echo 'Release tag must point to a commit reachable from zapia/launcher-refresh.' >&2; exit 1; }
-          latest_manifest=$(gh api repos/matiascaggiano740-sudo/nexo/releases/latest --jq '.assets[] | select(.name == "nexo-update.json") | .browser_download_url' 2>/dev/null || true)
-          if [[ -n "$latest_manifest" ]]; then
+          latest_manifest=$(gh api repos/matiascaggiano740-sudo/nexo/releases/latest --jq '.assets[]? | select(.name == "nexo-update.json") | .browser_download_url' 2>/dev/null || true)
+          if [[ "$latest_manifest" == https://* ]]; then
             previous_code=$(curl --fail --silent --show-error "$latest_manifest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["versionCode"])')
             test "$version_code" -gt "$previous_code" || { echo "VERSION_CODE must increase beyond previous release $previous_code." >&2; exit 1; }
           fi
