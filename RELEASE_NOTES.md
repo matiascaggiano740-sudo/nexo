@@ -1,8 +1,6 @@
-NEXO Launcher 1.0.1
+NEXO Launcher 1.0.2 — candidata de validación
 
-• Ajuste de tamaño de iconos con vista previa en vivo y escala persistente.
-• Búsqueda del cajón optimizada para el teclado: resultados accesibles y retroceso que oculta primero el teclado.
-• Carpetas movibles entre celdas y páginas, con guardado de su contenido y manejo seguro de destinos ocupados.
-• Catálogo propio de widgets y mejoras de persistencia y restauración.
+• Corrige la opacidad accidental de los iconos y carpetas del inicio cuando no hay ningún elemento en arrastre.
+• Mantiene el tamaño de iconos, packs, páginas, dock, carpetas, widgets y ajustes existentes.
 
-La instalación conserva el paquete y el certificado permanente de NEXO. Android solicitará confirmación para instalar la actualización.
+Candidata no publicada. La instalación requiere confirmación de Android; no borra los datos de NEXO.
