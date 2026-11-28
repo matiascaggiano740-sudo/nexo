@@ -41,8 +41,6 @@ jobs:
           fi
           echo "VERSION_CODE=$version_code" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$version_name" >> "$GITHUB_ENV"
-      - name: Configure Android SDK
-        uses: android-actions/setup-android@v3
       - name: Prepare permanent signing key
         env:
           NEXO_KEYSTORE_BASE64: ${{ secrets.NEXO_KEYSTORE_BASE64 }}
